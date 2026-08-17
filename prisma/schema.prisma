@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id         String    @id @default(uuid())
+  name       String
+  slug       String    @unique
+  bannerUrl  String?
+  subcats    Subcategory[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Subcategory {
+  id         String    @id @default(uuid())
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+  name       String
+  slug       String
+  bannerUrl  String?
+  products   Product[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Product {
+  id           String       @id @default(uuid())
+  subcategory  Subcategory  @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+  subcategoryId String
+  name         String
+  sku          String?      @unique
+  description  String?
+  productType  String       // 'license_key' | 'downloadable' | 'secret_file' | 'bundle'
+  priceCents   Int          @default(0)
+  currency     String       @default("USD")
+  bannerUrl    String?
+  files        ProductFile[]
+  licenseKeys  LicenseKey[]
+  purchases    Purchase[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model ProductFile {
+  id         String   @id @default(uuid())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  fileName   String
+  content    Bytes?   // encrypted blob if stored in DB
+  s3Key      String?  // or store file in S3
+  isHidden   Boolean  @default(true) // only delivered after purchase
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model LicenseKey {
+  id                    String   @id @default(uuid())
+  product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId             String
+  keyCiphertext         Bytes    // AES-GCM ciphertext
+  assignedToPurchaseId  String?  // when assigned
+  metadata              Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Purchase {
+  id              String   @id @default(uuid())
+  userId          String?  // nullable for guest
+  product         Product  @relation(fields: [productId], references: [id])
+  productId       String
+  amountCents     Int
+  currency        String
+  status          String   @default("pending") // pending|paid|failed|delivered|revoked
+  paymentProvider String?
+  paymentRef      String?
+  deliveredAt     DateTime?
+  downloadUrl     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Download {
+  id         String   @id @default(uuid())
+  purchase   Purchase @relation(fields: [purchaseId], references: [id])
+  purchaseId String
+  url        String
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+}
