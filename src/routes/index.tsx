@@ -5,16 +5,16 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Telegram Crypto Store Bot — Manual BTC, USDT & USDC checkout" },
+      { title: "Enroll Log" },
       {
         name: "description",
         content:
           "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
       },
-      { property: "og:title", content: "Telegram Crypto Store Bot" },
+      { property: "og:title", content: "Enroll Log" },
       {
         property: "og:description",
-        content: "Manual BTC, USDT TRC20 and USDC payments with automatic on-chain confirmation.",
+        content: "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
       },
     ],
   }),
