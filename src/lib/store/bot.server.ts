@@ -26,7 +26,7 @@ import {
 import { answerCallback, editMessage, escapeHtml, sendMessage, type InlineKeyboard } from "./telegram.server";
 import { isPlausibleHash } from "./verify.server";
 
-type From = { id: number; username?: string; first_name?: string };
+type From = { id: number; username?: string; first_name?: string; is_bot?: boolean };
 
 function mainMenu(admin: boolean): InlineKeyboard {
   const rows: InlineKeyboard = [
