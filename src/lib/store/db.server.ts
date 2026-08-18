@@ -15,7 +15,17 @@ export type StoreSettings = {
   payment_expiry_minutes: number;
   min_topup_usd: number;
   amount_tolerance_percent: number;
+  banner_image_url: string | null;
+  mini_app_url: string | null;
 };
+
+/** Public URL of the Telegram Mini App (falls back to the published site). */
+export function miniAppUrl(settings: StoreSettings): string {
+  const configured = settings.mini_app_url?.trim();
+  if (configured) return configured;
+  const base = process.env["PUBLIC_SITE_URL"]?.trim() || "https://enrollmentlog.lovable.app";
+  return `${base.replace(/\/$/, "")}/app`;
+}
 
 export type BotUser = {
   id: number;

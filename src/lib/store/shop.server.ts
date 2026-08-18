@@ -12,7 +12,18 @@ export type Product = {
   download_link: string | null;
   is_active: boolean;
   category_id: number | null;
+  subcategory_id: number | null;
+  image_url: string | null;
 };
+
+export type Category = {
+  id: number;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+};
+
+export type Subcategory = Category & { category_id: number | null };
 
 export async function availableStock(product: Product): Promise<number> {
   if (product.product_type === "file") return 9999;
@@ -28,7 +39,41 @@ export async function availableStock(product: Product): Promise<number> {
 export async function listCategories() {
   const db = await getDb();
   const { data } = await db.from("categories").select("*").order("sort_order").order("name");
-  return (data ?? []) as { id: number; name: string }[];
+  return (data ?? []) as Category[];
+}
+
+export async function getCategory(id: number): Promise<Category | null> {
+  const db = await getDb();
+  const { data } = await db.from("categories").select("*").eq("id", id).maybeSingle();
+  return (data as Category) ?? null;
+}
+
+export async function listSubcategories(categoryId: number) {
+  const db = await getDb();
+  const { data } = await db
+    .from("subcategories")
+    .select("*")
+    .eq("category_id", categoryId)
+    .order("sort_order")
+    .order("name");
+  return (data ?? []) as Subcategory[];
+}
+
+export async function getSubcategory(id: number): Promise<Subcategory | null> {
+  const db = await getDb();
+  const { data } = await db.from("subcategories").select("*").eq("id", id).maybeSingle();
+  return (data as Subcategory) ?? null;
+}
+
+export async function listProductsBySubcategory(subcategoryId: number) {
+  const db = await getDb();
+  const { data } = await db
+    .from("products")
+    .select("*")
+    .eq("is_active", true)
+    .eq("subcategory_id", subcategoryId)
+    .order("name");
+  return (data ?? []) as Product[];
 }
 
 export async function listProducts(categoryId: number | null) {

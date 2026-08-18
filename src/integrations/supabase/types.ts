@@ -130,6 +130,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: number
+          image_url: string | null
           name: string
           sort_order: number
         }
@@ -137,6 +138,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: number
+          image_url?: string | null
           name: string
           sort_order?: number
         }
@@ -144,6 +146,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: number
+          image_url?: string | null
           name?: string
           sort_order?: number
         }
@@ -396,10 +399,12 @@ export type Database = {
           admin_telegram_id: number | null
           amount_tolerance_percent: number
           auto_confirm: boolean
+          banner_image_url: string | null
           btc_address: string | null
           channel_username: string | null
           id: number
           min_topup_usd: number
+          mini_app_url: string | null
           payment_expiry_minutes: number
           store_name: string
           support_username: string | null
@@ -412,10 +417,12 @@ export type Database = {
           admin_telegram_id?: number | null
           amount_tolerance_percent?: number
           auto_confirm?: boolean
+          banner_image_url?: string | null
           btc_address?: string | null
           channel_username?: string | null
           id?: number
           min_topup_usd?: number
+          mini_app_url?: string | null
           payment_expiry_minutes?: number
           store_name?: string
           support_username?: string | null
@@ -428,10 +435,12 @@ export type Database = {
           admin_telegram_id?: number | null
           amount_tolerance_percent?: number
           auto_confirm?: boolean
+          banner_image_url?: string | null
           btc_address?: string | null
           channel_username?: string | null
           id?: number
           min_topup_usd?: number
+          mini_app_url?: string | null
           payment_expiry_minutes?: number
           store_name?: string
           support_username?: string | null
@@ -446,20 +455,29 @@ export type Database = {
         Row: {
           category_id: number | null
           created_at: string
+          description: string | null
           id: number
+          image_url: string | null
           name: string
+          sort_order: number
         }
         Insert: {
           category_id?: number | null
           created_at?: string
+          description?: string | null
           id?: number
+          image_url?: string | null
           name: string
+          sort_order?: number
         }
         Update: {
           category_id?: number | null
           created_at?: string
+          description?: string | null
           id?: number
+          image_url?: string | null
           name?: string
+          sort_order?: number
         }
         Relationships: [
           {

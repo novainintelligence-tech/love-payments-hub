@@ -1,6 +1,17 @@
 /** Telegram update dispatcher for the store bot. */
 import { adminMenu, handleAdminCallback, handleAdminState, showAdminMenu } from "./admin.server";
-import { getDb, getOrCreateUser, getSettings, getState, isAdmin, money, setState, type BotUser, type StoreSettings } from "./db.server";
+import {
+  getDb,
+  getOrCreateUser,
+  getSettings,
+  getState,
+  isAdmin,
+  miniAppUrl,
+  money,
+  setState,
+  type BotUser,
+  type StoreSettings,
+} from "./db.server";
 import { ASSET_LABEL, formatAmount, type PaymentAsset } from "./rates.server";
 import {
   createInvoice,
@@ -16,20 +27,34 @@ import {
   cartKeyboard,
   cartText,
   checkout,
+  getCategory,
   getCart,
   getProduct,
+  getSubcategory,
   listCategories,
   listOrders,
   listProducts,
+  listProductsBySubcategory,
+  listSubcategories,
   orderDetail,
+  type Product,
 } from "./shop.server";
-import { answerCallback, editMessage, escapeHtml, sendMessage, type InlineKeyboard } from "./telegram.server";
+import {
+  answerCallback,
+  editCard,
+  editMessage,
+  escapeHtml,
+  sendCard,
+  sendMessage,
+  type InlineKeyboard,
+} from "./telegram.server";
 import { isPlausibleHash } from "./verify.server";
 
 type From = { id: number; username?: string; first_name?: string; is_bot?: boolean };
 
-function mainMenu(admin: boolean): InlineKeyboard {
+function mainMenu(admin: boolean, settings: StoreSettings): InlineKeyboard {
   const rows: InlineKeyboard = [
+    [{ text: "🚀 Open store app", web_app: { url: miniAppUrl(settings) } }],
     [{ text: "🛍 Browse products", callback_data: "shop" }],
     [
       { text: "🛒 Cart", callback_data: "cart" },
@@ -73,6 +98,10 @@ async function showTopUpAssets(chatId: number, messageId?: number) {
   return sendMessage(chatId, text, markup);
 }
 
+function productButton(p: Product) {
+  return [{ text: `${p.image_url ? "🖼 " : ""}${p.name} — $${Number(p.price).toFixed(2)}`, callback_data: `prod:${p.id}` }];
+}
+
 async function showProduct(chatId: number, messageId: number, productId: number) {
   const product = await getProduct(productId);
   if (!product) return editMessage(chatId, messageId, "Product not found.", [[{ text: "⬅️ Menu", callback_data: "menu" }]]);
@@ -92,28 +121,110 @@ async function showProduct(chatId: number, messageId: number, productId: number)
   } else {
     markup.push([{ text: "❌ Out of stock", callback_data: "noop" }]);
   }
-  markup.push([{ text: "⬅️ Back", callback_data: product.category_id ? `cat:${product.category_id}` : "shop" }]);
-  return editMessage(chatId, messageId, text, markup);
+  const back = product.subcategory_id
+    ? `sub:${product.subcategory_id}`
+    : product.category_id
+      ? `cat:${product.category_id}`
+      : "shop";
+  markup.push([{ text: "⬅️ Back", callback_data: back }]);
+  return editCard(chatId, messageId, product.image_url, text, markup);
 }
 
-async function showCategories(chatId: number, messageId: number) {
+/** Sends every product in a list as its own advert card. */
+async function sendGallery(chatId: number, products: Product[], backData: string) {
+  const withImages = products.slice(0, 10);
+  for (const p of withImages) {
+    await sendCard(
+      chatId,
+      p.image_url,
+      [
+        `<b>${escapeHtml(p.name)}</b>`,
+        escapeHtml((p.description ?? "").slice(0, 300)),
+        "",
+        `Price: <b>${money(p.price)}</b>`,
+      ].join("\n"),
+      [
+        [
+          { text: "🛒 Add to cart", callback_data: `cart:add:${p.id}` },
+          { text: "⚡ Buy now", callback_data: `buy:${p.id}` },
+        ],
+        [{ text: "🔎 Details", callback_data: `prod:${p.id}` }],
+      ],
+    );
+  }
+  await sendMessage(chatId, "⬆️ Tap a product above to buy.", [
+    [{ text: "⬅️ Back", callback_data: backData }],
+    [{ text: "🏠 Menu", callback_data: "menu" }],
+  ]);
+}
+
+async function showCategories(chatId: number, messageId: number, settings: StoreSettings) {
   const categories = await listCategories();
   if (categories.length === 0) {
     const products = await listProducts(null);
     if (products.length === 0) {
-      return editMessage(chatId, messageId, "🛍 The catalog is empty right now. Please check back soon.", [
+      return editCard(chatId, messageId, settings.banner_image_url, "🛍 The catalog is empty right now. Please check back soon.", [
         [{ text: "⬅️ Menu", callback_data: "menu" }],
       ]);
     }
-    return editMessage(chatId, messageId, "🛍 <b>All products</b>", [
-      ...products.map((p) => [{ text: `${p.name} — $${Number(p.price).toFixed(2)}`, callback_data: `prod:${p.id}` }]),
+    return editCard(chatId, messageId, settings.banner_image_url, "🛍 <b>All products</b>", [
+      ...products.map(productButton),
+      [{ text: "🖼 View as gallery", callback_data: "gal:all" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ]);
   }
-  return editMessage(chatId, messageId, "🛍 <b>Choose a category</b>", [
-    ...categories.map((c) => [{ text: c.name, callback_data: `cat:${c.id}` }]),
-    [{ text: "⬅️ Menu", callback_data: "menu" }],
-  ]);
+  return editCard(
+    chatId,
+    messageId,
+    settings.banner_image_url,
+    ["🛍 <b>Choose a category</b>", "", escapeHtml(settings.store_name)].join("\n"),
+    [
+      ...categories.map((c) => [{ text: `${c.image_url ? "🖼 " : "📂 "}${c.name}`, callback_data: `cat:${c.id}` }]),
+      [{ text: "⬅️ Menu", callback_data: "menu" }],
+    ],
+  );
+}
+
+async function showCategory(chatId: number, messageId: number, categoryId: number) {
+  const category = await getCategory(categoryId);
+  if (!category) return showCategoriesFallback(chatId, messageId);
+  const subs = await listSubcategories(categoryId);
+  const products = await listProducts(categoryId);
+  const rows: InlineKeyboard = [
+    ...subs.map((s) => [{ text: `${s.image_url ? "🖼 " : "📁 "}${s.name}`, callback_data: `sub:${s.id}` }]),
+    ...products.filter((p) => !p.subcategory_id).map(productButton),
+  ];
+  if (products.length > 0) rows.push([{ text: "🖼 View as gallery", callback_data: `gal:cat:${categoryId}` }]);
+  rows.push([{ text: "⬅️ Categories", callback_data: "shop" }]);
+  const text = [
+    `📂 <b>${escapeHtml(category.name)}</b>`,
+    category.description ? `\n${escapeHtml(category.description)}` : "",
+    rows.length === 1 ? "\nNothing here yet." : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return editCard(chatId, messageId, category.image_url, text, rows);
+}
+
+async function showSubcategory(chatId: number, messageId: number, subcategoryId: number) {
+  const sub = await getSubcategory(subcategoryId);
+  if (!sub) return showCategoriesFallback(chatId, messageId);
+  const products = await listProductsBySubcategory(subcategoryId);
+  const rows: InlineKeyboard = [...products.map(productButton)];
+  if (products.length > 0) rows.push([{ text: "🖼 View as gallery", callback_data: `gal:sub:${subcategoryId}` }]);
+  rows.push([{ text: "⬅️ Back", callback_data: sub.category_id ? `cat:${sub.category_id}` : "shop" }]);
+  const text = [
+    `📁 <b>${escapeHtml(sub.name)}</b>`,
+    sub.description ? `\n${escapeHtml(sub.description)}` : "",
+    products.length === 0 ? "\nNo products here yet." : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return editCard(chatId, messageId, sub.image_url, text, rows);
+}
+
+async function showCategoriesFallback(chatId: number, messageId: number) {
+  return editMessage(chatId, messageId, "Not found.", [[{ text: "⬅️ Menu", callback_data: "menu" }]]);
 }
 
 async function startTopUpAmount(chatId: number, messageId: number, asset: PaymentAsset, settings: StoreSettings) {
@@ -179,15 +290,15 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
 
   if (trimmed.startsWith("/start")) {
     await setState(chatId, null);
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+    await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/menu") {
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+    await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/balance") {
-    await sendMessage(chatId, `💰 Your balance: <b>${money(user.wallet_balance)}</b>`, mainMenu(admin));
+    await sendMessage(chatId, `💰 Your balance: <b>${money(user.wallet_balance)}</b>`, mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/admin") {
@@ -204,6 +315,39 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
     const target = Number(trimmed.split(/\s+/)[1]);
     await db.from("bot_users").update({ is_banned: banned }).eq("telegram_id", target);
     await sendMessage(chatId, `${banned ? "🚫 Banned" : "✅ Unbanned"} ${target}.`, adminMenu);
+    return;
+  }
+  if (admin && trimmed.startsWith("/img")) {
+    const [, scope, ...rest] = trimmed.split(/\s+/);
+    const db = await getDb();
+    if (scope === "banner") {
+      const url = rest[0];
+      if (!url) {
+        await sendMessage(chatId, "Usage: <code>/img banner &lt;image url&gt;</code>");
+        return;
+      }
+      await db.from("store_settings").update({ banner_image_url: url }).eq("id", 1);
+      await sendMessage(chatId, "🖼 Store banner updated.");
+      return;
+    }
+    const table = scope === "cat" ? "categories" : scope === "sub" ? "subcategories" : scope === "prod" ? "products" : null;
+    const id = Number(rest[0]);
+    const url = rest[1];
+    if (!table || !id || !url) {
+      await sendMessage(
+        chatId,
+        [
+          "🖼 <b>Set images</b>",
+          "<code>/img banner &lt;url&gt;</code>",
+          "<code>/img cat &lt;id&gt; &lt;url&gt;</code>",
+          "<code>/img sub &lt;id&gt; &lt;url&gt;</code>",
+          "<code>/img prod &lt;id&gt; &lt;url&gt;</code>",
+        ].join("\n"),
+      );
+      return;
+    }
+    const { error } = await db.from(table).update({ image_url: url }).eq("id", id);
+    await sendMessage(chatId, error ? `❌ ${escapeHtml(error.message)}` : `🖼 Image set for ${scope} #${id}.`);
     return;
   }
 
@@ -233,7 +377,7 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
       const tx = await loadTransaction(txId);
       if (!tx) {
         await setState(chatId, null);
-        await sendMessage(chatId, "❌ Invoice not found.", mainMenu(admin));
+        await sendMessage(chatId, "❌ Invoice not found.", mainMenu(admin, settings));
         return;
       }
       if (!isPlausibleHash(tx.asset, trimmed)) {
@@ -267,7 +411,7 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
       await db.from("disputes").insert({ order_id: orderId, user_id: user.id, reason: trimmed });
       await db.from("orders").update({ dispute_status: "opened" }).eq("id", orderId);
       await setState(chatId, null);
-      await sendMessage(chatId, "⚖️ Your dispute has been opened. An admin will review it shortly.", mainMenu(admin));
+      await sendMessage(chatId, "⚖️ Your dispute has been opened. An admin will review it shortly.", mainMenu(admin, settings));
       if (settings.admin_telegram_id) {
         await sendMessage(
           Number(settings.admin_telegram_id),
@@ -285,13 +429,13 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
           `🆘 Support message from @${escapeHtml(user.username ?? String(user.telegram_id))} (${user.telegram_id}):\n${escapeHtml(trimmed)}`,
         );
       }
-      await sendMessage(chatId, "🆘 Message sent to support. You will get a reply here.", mainMenu(admin));
+      await sendMessage(chatId, "🆘 Message sent to support. You will get a reply here.", mainMenu(admin, settings));
       return;
     }
   }
 
   // Fallback: treat a bare hash as a payment submission for the newest open invoice.
-  await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+  await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
 }
 
 async function handleCallback(
@@ -320,23 +464,27 @@ async function handleCallback(
   switch (root) {
     case "menu":
       await setState(chatId, null);
-      await editMessage(chatId, messageId, welcomeText(settings, user), mainMenu(admin));
+      await editCard(chatId, messageId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
       break;
     case "shop":
-      await showCategories(chatId, messageId);
+      await showCategories(chatId, messageId, settings);
       break;
     case "cat": {
-      const categoryId = Number(parts[1]);
-      const products = await listProducts(categoryId);
-      await editMessage(
-        chatId,
-        messageId,
-        products.length === 0 ? "No products in this category yet." : "🛍 <b>Products</b>",
-        [
-          ...products.map((p) => [{ text: `${p.name} — $${Number(p.price).toFixed(2)}`, callback_data: `prod:${p.id}` }]),
-          [{ text: "⬅️ Categories", callback_data: "shop" }],
-        ],
-      );
+      await showCategory(chatId, messageId, Number(parts[1]));
+      break;
+    }
+    case "sub": {
+      await showSubcategory(chatId, messageId, Number(parts[1]));
+      break;
+    }
+    case "gal": {
+      await answerCallback(callbackId, "Loading gallery…");
+      const scope = parts[1];
+      const id = Number(parts[2]);
+      const products =
+        scope === "sub" ? await listProductsBySubcategory(id) : await listProducts(scope === "cat" ? id : null);
+      const back = scope === "sub" ? `sub:${id}` : scope === "cat" ? `cat:${id}` : "shop";
+      await sendGallery(chatId, products, back);
       break;
     }
     case "prod":
@@ -469,7 +617,7 @@ async function handleCallback(
         const db = await getDb();
         await db.from("transactions").update({ status: "expired" }).eq("id", tx.id).in("status", ["pending", "submitted"]);
         await setState(chatId, null);
-        await editMessage(chatId, messageId, "❌ Invoice cancelled.", mainMenu(admin));
+        await editMessage(chatId, messageId, "❌ Invoice cancelled.", mainMenu(admin, settings));
       } else {
         if (tx.status === "completed") {
           await answerCallback(callbackId, "Already confirmed ✅", true);
