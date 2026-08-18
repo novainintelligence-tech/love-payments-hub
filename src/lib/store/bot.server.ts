@@ -290,11 +290,11 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
 
   if (trimmed.startsWith("/start")) {
     await setState(chatId, null);
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
+    await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/menu") {
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
+    await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/balance") {
@@ -402,7 +402,7 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
   }
 
   // Fallback: treat a bare hash as a payment submission for the newest open invoice.
-  await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
+  await sendCard(chatId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
 }
 
 async function handleCallback(
