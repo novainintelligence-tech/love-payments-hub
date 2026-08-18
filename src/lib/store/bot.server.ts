@@ -1,6 +1,17 @@
 /** Telegram update dispatcher for the store bot. */
 import { adminMenu, handleAdminCallback, handleAdminState, showAdminMenu } from "./admin.server";
-import { getDb, getOrCreateUser, getSettings, getState, isAdmin, money, setState, type BotUser, type StoreSettings } from "./db.server";
+import {
+  getDb,
+  getOrCreateUser,
+  getSettings,
+  getState,
+  isAdmin,
+  miniAppUrl,
+  money,
+  setState,
+  type BotUser,
+  type StoreSettings,
+} from "./db.server";
 import { ASSET_LABEL, formatAmount, type PaymentAsset } from "./rates.server";
 import {
   createInvoice,
@@ -16,20 +27,34 @@ import {
   cartKeyboard,
   cartText,
   checkout,
+  getCategory,
   getCart,
   getProduct,
+  getSubcategory,
   listCategories,
   listOrders,
   listProducts,
+  listProductsBySubcategory,
+  listSubcategories,
   orderDetail,
+  type Product,
 } from "./shop.server";
-import { answerCallback, editMessage, escapeHtml, sendMessage, type InlineKeyboard } from "./telegram.server";
+import {
+  answerCallback,
+  editCard,
+  editMessage,
+  escapeHtml,
+  sendCard,
+  sendMessage,
+  type InlineKeyboard,
+} from "./telegram.server";
 import { isPlausibleHash } from "./verify.server";
 
 type From = { id: number; username?: string; first_name?: string; is_bot?: boolean };
 
-function mainMenu(admin: boolean): InlineKeyboard {
+function mainMenu(admin: boolean, settings: StoreSettings): InlineKeyboard {
   const rows: InlineKeyboard = [
+    [{ text: "🚀 Open store app", web_app: { url: miniAppUrl(settings) } }],
     [{ text: "🛍 Browse products", callback_data: "shop" }],
     [
       { text: "🛒 Cart", callback_data: "cart" },
