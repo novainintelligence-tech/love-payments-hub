@@ -1,6 +1,11 @@
 /** Thin Telegram Bot API wrapper (server-only). */
 
-export type InlineButton = { text: string; callback_data?: string; url?: string };
+export type InlineButton = {
+  text: string;
+  callback_data?: string;
+  url?: string;
+  web_app?: { url: string };
+};
 export type InlineKeyboard = InlineButton[][];
 
 function token(): string {
@@ -84,4 +89,67 @@ export function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function caption(text: string): string {
+  return text.length > 1000 ? `${text.slice(0, 997)}…` : text;
+}
+
+export async function deleteMessage(chatId: number, messageId: number) {
+  return tgSafe("deleteMessage", { chat_id: chatId, message_id: messageId });
+}
+
+/** Sends a banner-style card: photo + caption + buttons, or plain text when no image. */
+export async function sendCard(
+  chatId: number,
+  photo: string | null | undefined,
+  text: string,
+  markup?: InlineKeyboard,
+) {
+  if (!photo) return sendMessage(chatId, text, markup);
+  const sent = await tgSafe("sendPhoto", {
+    chat_id: chatId,
+    photo,
+    caption: caption(text),
+    parse_mode: "HTML",
+    ...(markup ? { reply_markup: keyboard(markup) } : {}),
+  });
+  if (sent === null) return sendMessage(chatId, text, markup);
+  return sent;
+}
+
+/**
+ * Updates an existing message into a banner card. Telegram cannot convert a text
+ * message into a photo message, so we replace it when the in-place edit fails.
+ */
+export async function editCard(
+  chatId: number,
+  messageId: number,
+  photo: string | null | undefined,
+  text: string,
+  markup?: InlineKeyboard,
+) {
+  if (!photo) {
+    const edited = await tgSafe("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(markup ? { reply_markup: keyboard(markup) } : {}),
+    });
+    if (edited !== null) return edited;
+    await deleteMessage(chatId, messageId);
+    return sendMessage(chatId, text, markup);
+  }
+
+  const edited = await tgSafe("editMessageMedia", {
+    chat_id: chatId,
+    message_id: messageId,
+    media: { type: "photo", media: photo, caption: caption(text), parse_mode: "HTML" },
+    ...(markup ? { reply_markup: keyboard(markup) } : {}),
+  });
+  if (edited !== null) return edited;
+  await deleteMessage(chatId, messageId);
+  return sendCard(chatId, photo, text, markup);
 }
