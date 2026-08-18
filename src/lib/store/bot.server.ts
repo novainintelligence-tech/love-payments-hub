@@ -204,15 +204,15 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
 
   if (trimmed.startsWith("/start")) {
     await setState(chatId, null);
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/menu") {
-    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+    await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/balance") {
-    await sendMessage(chatId, `💰 Your balance: <b>${money(user.wallet_balance)}</b>`, mainMenu(admin));
+    await sendMessage(chatId, `💰 Your balance: <b>${money(user.wallet_balance)}</b>`, mainMenu(admin, settings));
     return;
   }
   if (trimmed === "/admin") {
@@ -258,7 +258,7 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
       const tx = await loadTransaction(txId);
       if (!tx) {
         await setState(chatId, null);
-        await sendMessage(chatId, "❌ Invoice not found.", mainMenu(admin));
+        await sendMessage(chatId, "❌ Invoice not found.", mainMenu(admin, settings));
         return;
       }
       if (!isPlausibleHash(tx.asset, trimmed)) {
@@ -292,7 +292,7 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
       await db.from("disputes").insert({ order_id: orderId, user_id: user.id, reason: trimmed });
       await db.from("orders").update({ dispute_status: "opened" }).eq("id", orderId);
       await setState(chatId, null);
-      await sendMessage(chatId, "⚖️ Your dispute has been opened. An admin will review it shortly.", mainMenu(admin));
+      await sendMessage(chatId, "⚖️ Your dispute has been opened. An admin will review it shortly.", mainMenu(admin, settings));
       if (settings.admin_telegram_id) {
         await sendMessage(
           Number(settings.admin_telegram_id),
@@ -310,13 +310,13 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
           `🆘 Support message from @${escapeHtml(user.username ?? String(user.telegram_id))} (${user.telegram_id}):\n${escapeHtml(trimmed)}`,
         );
       }
-      await sendMessage(chatId, "🆘 Message sent to support. You will get a reply here.", mainMenu(admin));
+      await sendMessage(chatId, "🆘 Message sent to support. You will get a reply here.", mainMenu(admin, settings));
       return;
     }
   }
 
   // Fallback: treat a bare hash as a payment submission for the newest open invoice.
-  await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin));
+  await sendMessage(chatId, welcomeText(settings, user), mainMenu(admin, settings));
 }
 
 async function handleCallback(
@@ -345,7 +345,7 @@ async function handleCallback(
   switch (root) {
     case "menu":
       await setState(chatId, null);
-      await editMessage(chatId, messageId, welcomeText(settings, user), mainMenu(admin));
+      await editMessage(chatId, messageId, welcomeText(settings, user), mainMenu(admin, settings));
       break;
     case "shop":
       await showCategories(chatId, messageId);
@@ -494,7 +494,7 @@ async function handleCallback(
         const db = await getDb();
         await db.from("transactions").update({ status: "expired" }).eq("id", tx.id).in("status", ["pending", "submitted"]);
         await setState(chatId, null);
-        await editMessage(chatId, messageId, "❌ Invoice cancelled.", mainMenu(admin));
+        await editMessage(chatId, messageId, "❌ Invoice cancelled.", mainMenu(admin, settings));
       } else {
         if (tx.status === "completed") {
           await answerCallback(callbackId, "Already confirmed ✅", true);
