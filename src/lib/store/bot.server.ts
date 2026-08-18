@@ -431,23 +431,27 @@ async function handleCallback(
   switch (root) {
     case "menu":
       await setState(chatId, null);
-      await editMessage(chatId, messageId, welcomeText(settings, user), mainMenu(admin, settings));
+      await editCard(chatId, messageId, settings.banner_image_url, welcomeText(settings, user), mainMenu(admin, settings));
       break;
     case "shop":
-      await showCategories(chatId, messageId);
+      await showCategories(chatId, messageId, settings);
       break;
     case "cat": {
-      const categoryId = Number(parts[1]);
-      const products = await listProducts(categoryId);
-      await editMessage(
-        chatId,
-        messageId,
-        products.length === 0 ? "No products in this category yet." : "🛍 <b>Products</b>",
-        [
-          ...products.map((p) => [{ text: `${p.name} — $${Number(p.price).toFixed(2)}`, callback_data: `prod:${p.id}` }]),
-          [{ text: "⬅️ Categories", callback_data: "shop" }],
-        ],
-      );
+      await showCategory(chatId, messageId, Number(parts[1]));
+      break;
+    }
+    case "sub": {
+      await showSubcategory(chatId, messageId, Number(parts[1]));
+      break;
+    }
+    case "gal": {
+      await answerCallback(callbackId, "Loading gallery…");
+      const scope = parts[1];
+      const id = Number(parts[2]);
+      const products =
+        scope === "sub" ? await listProductsBySubcategory(id) : await listProducts(scope === "cat" ? id : null);
+      const back = scope === "sub" ? `sub:${id}` : scope === "cat" ? `cat:${id}` : "shop";
+      await sendGallery(chatId, products, back);
       break;
     }
     case "prod":
