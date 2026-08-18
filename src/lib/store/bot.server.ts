@@ -317,6 +317,39 @@ async function handleText(chatId: number, from: From, text: string, user: BotUse
     await sendMessage(chatId, `${banned ? "🚫 Banned" : "✅ Unbanned"} ${target}.`, adminMenu);
     return;
   }
+  if (admin && trimmed.startsWith("/img")) {
+    const [, scope, ...rest] = trimmed.split(/\s+/);
+    const db = await getDb();
+    if (scope === "banner") {
+      const url = rest[0];
+      if (!url) {
+        await sendMessage(chatId, "Usage: <code>/img banner &lt;image url&gt;</code>");
+        return;
+      }
+      await db.from("store_settings").update({ banner_image_url: url }).eq("id", 1);
+      await sendMessage(chatId, "🖼 Store banner updated.");
+      return;
+    }
+    const table = scope === "cat" ? "categories" : scope === "sub" ? "subcategories" : scope === "prod" ? "products" : null;
+    const id = Number(rest[0]);
+    const url = rest[1];
+    if (!table || !id || !url) {
+      await sendMessage(
+        chatId,
+        [
+          "🖼 <b>Set images</b>",
+          "<code>/img banner &lt;url&gt;</code>",
+          "<code>/img cat &lt;id&gt; &lt;url&gt;</code>",
+          "<code>/img sub &lt;id&gt; &lt;url&gt;</code>",
+          "<code>/img prod &lt;id&gt; &lt;url&gt;</code>",
+        ].join("\n"),
+      );
+      return;
+    }
+    const { error } = await db.from(table).update({ image_url: url }).eq("id", id);
+    await sendMessage(chatId, error ? `❌ ${escapeHtml(error.message)}` : `🖼 Image set for ${scope} #${id}.`);
+    return;
+  }
 
   const state = await getState(chatId);
   if (state) {
