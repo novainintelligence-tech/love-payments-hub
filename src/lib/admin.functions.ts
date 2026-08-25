@@ -137,6 +137,24 @@ export const adjustCustomerBalance = createServerFn({ method: "POST" })
     return { balance };
   });
 
+export const updateCustomers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { ids: number[]; isBanned: boolean }) => {
+    const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+    if (ids.length === 0) throw new Error("Select at least one customer");
+    return { ids, isBanned: Boolean(input.isBanned) };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("bot_users")
+      .update({ is_banned: data.isBanned })
+      .in("id", data.ids);
+    if (error) throw new Error(error.message);
+    return { message: `${data.ids.length} customer${data.ids.length === 1 ? "" : "s"} updated.` };
+  });
+
 export const broadcastMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { text: string }) => {
@@ -188,6 +206,206 @@ export const addProductKeys = createServerFn({ method: "POST" })
       .update({ stock_count: count ?? 0 })
       .eq("id", data.productId);
     return { added: data.keys.length, stock: count ?? 0 };
+  });
+
+export const saveProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (input: {
+      id?: number | null;
+      name: string;
+      price: number;
+      description?: string;
+      productType: "key" | "file";
+      categoryId?: number | null;
+      subcategoryId?: number | null;
+      imageUrl?: string;
+      downloadLink?: string;
+      isActive?: boolean;
+    }) => {
+      const name = input.name.trim().slice(0, 120);
+      if (name.length < 2 || !Number.isFinite(input.price) || input.price < 0)
+        throw new Error("Check product name and price");
+      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
+        throw new Error("Invalid product");
+      return {
+        id: input.id ?? null,
+        patch: {
+          name,
+          price: Number(input.price.toFixed(2)),
+          description: input.description?.trim().slice(0, 1000) || null,
+          product_type: input.productType,
+          category_id: input.categoryId ?? null,
+          subcategory_id: input.subcategoryId ?? null,
+          image_url: input.imageUrl?.trim().slice(0, 1000) || null,
+          download_link: input.downloadLink?.trim().slice(0, 1000) || null,
+          is_active: input.isActive ?? true,
+        },
+      };
+    },
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const result = data.id
+      ? await supabaseAdmin.from("products").update(data.patch).eq("id", data.id)
+      : await supabaseAdmin.from("products").insert(data.patch);
+    if (result.error) throw new Error(result.error.message);
+    return { message: data.id ? "Product updated." : "Product created." };
+  });
+
+export const bulkUpdateProducts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (input: {
+      ids: number[];
+      action: "activate" | "deactivate" | "price" | "category";
+      value?: number;
+    }) => {
+      const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+      if (ids.length === 0) throw new Error("Select at least one product");
+      if (["price", "category"].includes(input.action) && !Number.isFinite(input.value))
+        throw new Error("Enter a valid value");
+      return { ...input, ids };
+    },
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const patch =
+      data.action === "activate"
+        ? { is_active: true }
+        : data.action === "deactivate"
+          ? { is_active: false }
+          : data.action === "price"
+            ? { price: Number(Number(data.value).toFixed(2)) }
+            : { category_id: Number(data.value) };
+    const { error } = await supabaseAdmin.from("products").update(patch).in("id", data.ids);
+    if (error) throw new Error(error.message);
+    return { message: `${data.ids.length} products updated.` };
+  });
+
+export const saveCategory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (input: {
+      id?: number | null;
+      kind: "category" | "subcategory";
+      name: string;
+      description?: string;
+      categoryId?: number;
+      sortOrder?: number;
+    }) => {
+      const name = input.name.trim().slice(0, 80);
+      if (name.length < 2) throw new Error("Name is too short");
+      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
+        throw new Error("Invalid category");
+      if (input.kind === "subcategory" && !Number.isInteger(input.categoryId))
+        throw new Error("Choose a parent category");
+      return {
+        id: input.id ?? null,
+        kind: input.kind,
+        patch:
+          input.kind === "subcategory"
+            ? {
+                name,
+                description: input.description?.trim().slice(0, 500) || null,
+                category_id: input.categoryId,
+              }
+            : {
+                name,
+                description: input.description?.trim().slice(0, 500) || null,
+                sort_order: input.sortOrder ?? 0,
+              },
+      };
+    },
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const result =
+      data.kind === "subcategory"
+        ? data.id
+          ? await supabaseAdmin.from("subcategories").update(data.patch).eq("id", data.id)
+          : await supabaseAdmin.from("subcategories").insert(data.patch)
+        : data.id
+          ? await supabaseAdmin.from("categories").update(data.patch).eq("id", data.id)
+          : await supabaseAdmin.from("categories").insert(data.patch);
+    if (result.error) throw new Error(result.error.message);
+    return { message: `${data.kind === "category" ? "Category" : "Subcategory"} saved.` };
+  });
+
+export const resolveDispute = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number; resolution: string }) => {
+    const resolution = input.resolution.trim().slice(0, 1000);
+    if (!Number.isInteger(input.id) || resolution.length < 2) throw new Error("Enter a resolution");
+    return { id: input.id, resolution };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: dispute, error } = await supabaseAdmin
+      .from("disputes")
+      .update({
+        status: "resolved",
+        resolution: data.resolution,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", data.id)
+      .select("user_id, order_id")
+      .single();
+    if (error) throw new Error(error.message);
+    await supabaseAdmin
+      .from("orders")
+      .update({ dispute_status: "resolved" })
+      .eq("id", dispute.order_id);
+    const { data: user } = await supabaseAdmin
+      .from("bot_users")
+      .select("telegram_id")
+      .eq("id", dispute.user_id)
+      .maybeSingle();
+    if (user) {
+      const { sendMessage } = await import("./store/telegram.server");
+      await sendMessage(Number(user.telegram_id), `Your dispute was resolved:\n${data.resolution}`);
+    }
+    return { message: "Dispute resolved." };
+  });
+
+export const saveSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (input: {
+      storeName: string;
+      welcomeMessage: string;
+      supportUsername?: string;
+      miniAppUrl?: string;
+      bannerImageUrl?: string;
+      btcAddress?: string;
+      usdtTrc20Address?: string;
+      usdcErc20Address?: string;
+      paymentExpiryMinutes?: number;
+      amountTolerancePercent?: number;
+    }) => ({
+      store_name: input.storeName.trim().slice(0, 100),
+      welcome_message: input.welcomeMessage.trim().slice(0, 2000),
+      support_username: input.supportUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
+      mini_app_url: input.miniAppUrl?.trim().slice(0, 1000) || null,
+      banner_image_url: input.bannerImageUrl?.trim().slice(0, 1000) || null,
+      btc_address: input.btcAddress?.trim().slice(0, 200) || null,
+      usdt_trc20_address: input.usdtTrc20Address?.trim().slice(0, 200) || null,
+      usdc_erc20_address: input.usdcErc20Address?.trim().slice(0, 200) || null,
+      payment_expiry_minutes: Math.min(1440, Math.max(5, input.paymentExpiryMinutes ?? 30)),
+      amount_tolerance_percent: Math.min(20, Math.max(0, input.amountTolerancePercent ?? 2)),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    if (!data.store_name) throw new Error("Store name is required");
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("store_settings").update(data).eq("id", 1);
+    if (error) throw new Error(error.message);
+    return { message: "Store settings saved." };
   });
 /** Manually registers a Telegram user and sends them an invitation message. */
 export const inviteTelegramUser = createServerFn({ method: "POST" })

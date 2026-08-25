@@ -7,10 +7,12 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   adjustCustomerBalance,
   addProductKeys,
+  bulkUpdateProducts,
   broadcastMessage,
   claimAdmin,
   dashboardStats,
   reviewPayment,
+  updateCustomers,
 } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +74,8 @@ function Dashboard() {
   const adjust = useServerFn(adjustCustomerBalance);
   const broadcast = useServerFn(broadcastMessage);
   const addKeys = useServerFn(addProductKeys);
+  const updateCustomer = useServerFn(updateCustomers);
+  const updateProducts = useServerFn(bulkUpdateProducts);
   const claim = useServerFn(claimAdmin);
   const [busy, setBusy] = useState(false);
 
@@ -282,6 +286,16 @@ function Dashboard() {
               key={customer.id}
               customer={customer}
               busy={busy}
+              onToggleBan={() =>
+                run(
+                  async () =>
+                    (
+                      await updateCustomer({
+                        data: { ids: [customer.id], isBanned: !customer.is_banned },
+                      })
+                    ).message,
+                )
+              }
               onAdjust={(amount, reason) =>
                 run(async () => {
                   const result = await adjust({ data: { userId: customer.id, amount, reason } });
@@ -301,6 +315,19 @@ function Dashboard() {
               key={product.id}
               product={product}
               busy={busy}
+              onToggleActive={() =>
+                run(
+                  async () =>
+                    (
+                      await updateProducts({
+                        data: {
+                          ids: [product.id],
+                          action: product.is_active ? "deactivate" : "activate",
+                        },
+                      })
+                    ).message,
+                )
+              }
               onAddKeys={(keys) =>
                 run(async () => {
                   const result = await addKeys({ data: { productId: product.id, keys } });
@@ -335,10 +362,12 @@ function Dashboard() {
 function CustomerRow({
   customer,
   busy,
+  onToggleBan,
   onAdjust,
 }: {
   customer: Customer;
   busy: boolean;
+  onToggleBan: () => void;
   onAdjust: (amount: number, reason: string) => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -361,6 +390,14 @@ function CustomerRow({
         />
         <Button
           size="sm"
+          variant={customer.is_banned ? "secondary" : "destructive"}
+          disabled={busy}
+          onClick={onToggleBan}
+        >
+          {customer.is_banned ? "Unban" : "Ban"}
+        </Button>
+        <Button
+          size="sm"
           disabled={busy}
           onClick={() => {
             const parsed = Number(amount);
@@ -379,10 +416,12 @@ function CustomerRow({
 function ProductRow({
   product,
   busy,
+  onToggleActive,
   onAddKeys,
 }: {
   product: Product;
   busy: boolean;
+  onToggleActive: () => void;
   onAddKeys: (keys: string) => void;
 }) {
   const [keys, setKeys] = useState("");
@@ -393,6 +432,9 @@ function ProductRow({
           {product.name} · {money(product.price)}
         </p>
         <Badge variant="secondary">{product.stock_count} in stock</Badge>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={onToggleActive}>
+          {product.is_active ? "Deactivate" : "Activate"}
+        </Button>
       </div>
       <Textarea
         rows={3}
