@@ -24,7 +24,9 @@ export const ASSET_DECIMALS: Record<PaymentAsset, number> = {
 export async function getUsdPrice(asset: PaymentAsset): Promise<number> {
   if (asset !== "BTC") return 1;
   try {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd");
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+    );
     if (res.ok) {
       const data = (await res.json()) as { bitcoin?: { usd?: number } };
       const price = data.bitcoin?.usd;

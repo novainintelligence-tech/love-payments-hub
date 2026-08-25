@@ -69,7 +69,10 @@ export async function getOrCreateUser(from: {
     .maybeSingle();
   if (existing) {
     if (existing.username !== (from.username ?? null)) {
-      await db.from("bot_users").update({ username: from.username ?? null }).eq("id", existing.id);
+      await db
+        .from("bot_users")
+        .update({ username: from.username ?? null })
+        .eq("id", existing.id);
     }
     return existing as BotUser;
   }
@@ -86,7 +89,9 @@ export async function getOrCreateUser(from: {
   return data as BotUser;
 }
 
-export async function getState(chatId: number): Promise<{ name: string; data: Record<string, unknown> } | null> {
+export async function getState(
+  chatId: number,
+): Promise<{ name: string; data: Record<string, unknown> } | null> {
   const db = await getDb();
   const { data } = await db.from("bot_state").select("state").eq("chat_id", chatId).maybeSingle();
   const state = (data?.state ?? null) as { name?: string; data?: Record<string, unknown> } | null;
@@ -106,7 +111,10 @@ export async function setState(
   }
   await db
     .from("bot_state")
-    .upsert({ chat_id: chatId, state: { name, data }, updated_at: new Date().toISOString() }, { onConflict: "chat_id" });
+    .upsert(
+      { chat_id: chatId, state: { name, data }, updated_at: new Date().toISOString() },
+      { onConflict: "chat_id" },
+    );
 }
 
 export async function adjustBalance(

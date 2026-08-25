@@ -85,10 +85,7 @@ export async function answerCallback(id: string, text?: string, alert = false) {
 }
 
 export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function caption(text: string): string {

@@ -10,9 +10,15 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Admin sign in — Crypto Store Bot" },
-      { name: "description", content: "Sign in to manage products, payments and customers of your Telegram store." },
+      {
+        name: "description",
+        content: "Sign in to manage products, payments and customers of your Telegram store.",
+      },
       { property: "og:title", content: "Admin sign in — Crypto Store Bot" },
-      { property: "og:description", content: "Manage products, payments and customers of your Telegram store." },
+      {
+        property: "og:description",
+        content: "Manage products, payments and customers of your Telegram store.",
+      },
     ],
   }),
   component: AuthPage,
@@ -59,12 +65,22 @@ function AuthPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6">
       <div className="panel w-full max-w-sm p-8">
-        <h1 className="text-2xl font-bold">{mode === "signin" ? "Admin sign in" : "Create admin account"}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Console for your Telegram crypto store.</p>
+        <h1 className="text-2xl font-bold">
+          {mode === "signin" ? "Admin sign in" : "Create admin account"}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Console for your Telegram crypto store.
+        </p>
         <form className="mt-6 space-y-4" onSubmit={submit}>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>

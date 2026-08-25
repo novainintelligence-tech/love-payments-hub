@@ -1,6 +1,19 @@
 /** Manual crypto invoice creation, verification and settlement. */
-import { addressFor, adjustBalance, getDb, getSettings, money, type StoreSettings } from "./db.server";
-import { ASSET_LABEL, ASSET_NETWORK, formatAmount, getUsdPrice, type PaymentAsset } from "./rates.server";
+import {
+  addressFor,
+  adjustBalance,
+  getDb,
+  getSettings,
+  money,
+  type StoreSettings,
+} from "./db.server";
+import {
+  ASSET_LABEL,
+  ASSET_NETWORK,
+  formatAmount,
+  getUsdPrice,
+  type PaymentAsset,
+} from "./rates.server";
 import { escapeHtml, sendMessage, type InlineKeyboard } from "./telegram.server";
 import { MIN_CONFIRMATIONS, verifyPayment } from "./verify.server";
 
@@ -155,12 +168,18 @@ export type VerifyOutcome = {
 };
 
 /** Verifies the stored tx hash on-chain and settles when it checks out. */
-export async function verifyAndSettle(tx: Transaction, settings?: StoreSettings): Promise<VerifyOutcome> {
+export async function verifyAndSettle(
+  tx: Transaction,
+  settings?: StoreSettings,
+): Promise<VerifyOutcome> {
   const config = settings ?? (await getSettings());
   const db = await getDb();
   if (!tx.tx_hash) return { status: "not_found", message: "No transaction hash submitted yet." };
   if (!config.auto_confirm) {
-    return { status: "pending_review", message: "Submitted. An admin will confirm your payment shortly." };
+    return {
+      status: "pending_review",
+      message: "Submitted. An admin will confirm your payment shortly.",
+    };
   }
 
   const result = await verifyPayment(tx.asset, tx.tx_hash, tx.pay_address);
@@ -171,10 +190,17 @@ export async function verifyAndSettle(tx: Transaction, settings?: StoreSettings)
 
   if (!result.found) {
     await notifyAdminPending(config, tx, result.note);
-    return { status: "not_found", message: `⏳ ${result.note}\n\nWe will keep checking, and an admin can confirm it manually.` };
+    return {
+      status: "not_found",
+      message: `⏳ ${result.note}\n\nWe will keep checking, and an admin can confirm it manually.`,
+    };
   }
   if (result.paid < required) {
-    await notifyAdminPending(config, tx, `Underpaid: received ${result.paid}, expected ${tx.expected_amount}`);
+    await notifyAdminPending(
+      config,
+      tx,
+      `Underpaid: received ${result.paid}, expected ${tx.expected_amount}`,
+    );
     return {
       status: "underpaid",
       message: `⚠️ We found the transaction but it paid less than the invoice amount (${result.paid} vs ${Number(tx.expected_amount).toFixed(8)}). An admin will review it.`,
@@ -189,7 +215,9 @@ export async function verifyAndSettle(tx: Transaction, settings?: StoreSettings)
   const settled = await settleTransaction(tx.id, { auto: true, note: result.note });
   return {
     status: settled.credited ? "credited" : "pending_review",
-    message: settled.credited ? "✅ Payment confirmed and your balance has been updated." : "This invoice was already processed.",
+    message: settled.credited
+      ? "✅ Payment confirmed and your balance has been updated."
+      : "This invoice was already processed.",
   };
 }
 

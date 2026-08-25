@@ -14,7 +14,8 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "Enroll Log" },
       {
         property: "og:description",
-        content: "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
+        content:
+          "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
       },
     ],
   }),
@@ -35,12 +36,13 @@ function Index() {
           <Bot className="size-3.5 text-primary" /> Telegram store bot
         </span>
         <h1 className="text-4xl leading-tight font-bold sm:text-6xl">
-          Sell digital goods on Telegram, paid in <span className="text-primary">your own</span> crypto wallets.
+          Sell digital goods on Telegram, paid in <span className="text-primary">your own</span>{" "}
+          crypto wallets.
         </h1>
         <p className="max-w-2xl text-lg text-muted-foreground">
-          Customers top up an internal balance by sending BTC, USDT (TRC20) or USDC (Ethereum) directly to your
-          addresses, then submit the transaction hash. Payments confirm automatically on-chain, or manually from the
-          admin console.
+          Customers top up an internal balance by sending BTC, USDT (TRC20) or USDC (Ethereum)
+          directly to your addresses, then submit the transaction hash. Payments confirm
+          automatically on-chain, or manually from the admin console.
         </p>
         <div className="flex flex-wrap gap-3">
           <Button asChild size="lg">
@@ -66,9 +68,21 @@ function Index() {
 
       <section className="grid gap-4 sm:grid-cols-3">
         {[
-          { icon: Wallet, title: "Direct to your wallets", body: "No processor, no custody — funds land in your addresses." },
-          { icon: ShieldCheck, title: "Automatic confirmation", body: "Hashes are verified on-chain before balances move." },
-          { icon: Bitcoin, title: "Manual fallback", body: "Approve or reject any payment from Telegram or the console." },
+          {
+            icon: Wallet,
+            title: "Direct to your wallets",
+            body: "No processor, no custody — funds land in your addresses.",
+          },
+          {
+            icon: ShieldCheck,
+            title: "Automatic confirmation",
+            body: "Hashes are verified on-chain before balances move.",
+          },
+          {
+            icon: Bitcoin,
+            title: "Manual fallback",
+            body: "Approve or reject any payment from Telegram or the console.",
+          },
         ].map((item) => (
           <div key={item.title} className="panel p-5">
             <item.icon className="size-5 text-primary" />

@@ -22,9 +22,16 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
       { title: "Store console — Crypto Store Bot" },
-      { name: "description", content: "Approve crypto payments, manage stock and message customers of your Telegram store." },
+      {
+        name: "description",
+        content:
+          "Approve crypto payments, manage stock and message customers of your Telegram store.",
+      },
       { property: "og:title", content: "Store console — Crypto Store Bot" },
-      { property: "og:description", content: "Approve crypto payments, manage stock and message customers." },
+      {
+        property: "og:description",
+        content: "Approve crypto payments, manage stock and message customers.",
+      },
     ],
   }),
   component: Dashboard,
@@ -154,7 +161,9 @@ function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Store console</h1>
-          <p className="text-sm text-muted-foreground">Manual crypto checkout for @Enroll_Logsbot</p>
+          <p className="text-sm text-muted-foreground">
+            Manual crypto checkout for @Enroll_Logsbot
+          </p>
         </div>
         <Button
           variant="secondary"
@@ -192,7 +201,10 @@ function Dashboard() {
 
         <TabsContent value="payments" className="mt-4 space-y-3">
           {(payments.data ?? []).map((tx) => (
-            <div key={tx.id} className="panel flex flex-wrap items-center justify-between gap-4 p-4">
+            <div
+              key={tx.id}
+              className="panel flex flex-wrap items-center justify-between gap-4 p-4"
+            >
               <div className="min-w-0">
                 <p className="font-display text-sm">
                   {tx.invoice_code} · {money(tx.amount_usd)} · {tx.currency}
@@ -203,18 +215,55 @@ function Dashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant={tx.status === "completed" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}>
+                <Badge
+                  variant={
+                    tx.status === "completed"
+                      ? "default"
+                      : tx.status === "failed"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
                   {tx.status}
                 </Badge>
                 {tx.status !== "completed" && (
                   <>
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => run(async () => (await review({ data: { id: tx.id, action: "recheck" } })).message)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        run(
+                          async () =>
+                            (await review({ data: { id: tx.id, action: "recheck" } })).message,
+                        )
+                      }
+                    >
                       Re-check
                     </Button>
-                    <Button size="sm" disabled={busy} onClick={() => run(async () => (await review({ data: { id: tx.id, action: "approve" } })).message)}>
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        run(
+                          async () =>
+                            (await review({ data: { id: tx.id, action: "approve" } })).message,
+                        )
+                      }
+                    >
                       Approve
                     </Button>
-                    <Button size="sm" variant="destructive" disabled={busy} onClick={() => run(async () => (await review({ data: { id: tx.id, action: "reject" } })).message)}>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busy}
+                      onClick={() =>
+                        run(
+                          async () =>
+                            (await review({ data: { id: tx.id, action: "reject" } })).message,
+                        )
+                      }
+                    >
                       Reject
                     </Button>
                   </>
@@ -222,33 +271,61 @@ function Dashboard() {
               </div>
             </div>
           ))}
-          {payments.data?.length === 0 && <p className="text-sm text-muted-foreground">No invoices yet.</p>}
+          {payments.data?.length === 0 && (
+            <p className="text-sm text-muted-foreground">No invoices yet.</p>
+          )}
         </TabsContent>
 
         <TabsContent value="customers" className="mt-4 space-y-3">
           {(customers.data ?? []).map((customer) => (
-            <CustomerRow key={customer.id} customer={customer} busy={busy} onAdjust={(amount, reason) => run(async () => {
-              const result = await adjust({ data: { userId: customer.id, amount, reason } });
-              return `New balance: ${money(result.balance)}`;
-            })} />
+            <CustomerRow
+              key={customer.id}
+              customer={customer}
+              busy={busy}
+              onAdjust={(amount, reason) =>
+                run(async () => {
+                  const result = await adjust({ data: { userId: customer.id, amount, reason } });
+                  return `New balance: ${money(result.balance)}`;
+                })
+              }
+            />
           ))}
-          {customers.data?.length === 0 && <p className="text-sm text-muted-foreground">No customers yet.</p>}
+          {customers.data?.length === 0 && (
+            <p className="text-sm text-muted-foreground">No customers yet.</p>
+          )}
         </TabsContent>
 
         <TabsContent value="products" className="mt-4 space-y-3">
           {(products.data ?? []).map((product) => (
-            <ProductRow key={product.id} product={product} busy={busy} onAddKeys={(keys) => run(async () => {
-              const result = await addKeys({ data: { productId: product.id, keys } });
-              return `Added ${result.added} keys · stock ${result.stock}`;
-            })} />
+            <ProductRow
+              key={product.id}
+              product={product}
+              busy={busy}
+              onAddKeys={(keys) =>
+                run(async () => {
+                  const result = await addKeys({ data: { productId: product.id, keys } });
+                  return `Added ${result.added} keys · stock ${result.stock}`;
+                })
+              }
+            />
           ))}
           {products.data?.length === 0 && (
-            <p className="text-sm text-muted-foreground">No products yet — add them from the bot admin panel.</p>
+            <p className="text-sm text-muted-foreground">
+              No products yet — add them from the bot admin panel.
+            </p>
           )}
         </TabsContent>
 
         <TabsContent value="broadcast" className="mt-4">
-          <BroadcastPanel busy={busy} onSend={(text) => run(async () => `Broadcast sent to ${(await broadcast({ data: { text } })).sent} customers`)} />
+          <BroadcastPanel
+            busy={busy}
+            onSend={(text) =>
+              run(
+                async () =>
+                  `Broadcast sent to ${(await broadcast({ data: { text } })).sent} customers`,
+              )
+            }
+          />
         </TabsContent>
       </Tabs>
     </main>
@@ -341,7 +418,12 @@ function BroadcastPanel({ busy, onSend }: { busy: boolean; onSend: (text: string
   const [text, setText] = useState("");
   return (
     <div className="panel space-y-3 p-4">
-      <Textarea rows={5} placeholder="Message to all customers…" value={text} onChange={(e) => setText(e.target.value)} />
+      <Textarea
+        rows={5}
+        placeholder="Message to all customers…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
       <Button
         disabled={busy || text.trim().length < 2}
         onClick={() => {

@@ -79,16 +79,36 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Enroll Log" },
-      { name: "description", content: "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation." },
+      {
+        name: "description",
+        content:
+          "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
+      },
       { property: "og:title", content: "Enroll Log" },
-      { property: "og:description", content: "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation." },
+      {
+        property: "og:description",
+        content:
+          "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Enroll Log" },
-      { name: "twitter:description", content: "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/86fdb050-b580-42fd-8e41-b0902ebdddb3" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/86fdb050-b580-42fd-8e41-b0902ebdddb3" },
+      {
+        name: "twitter:description",
+        content:
+          "A Telegram digital goods store with manual crypto checkout: wallet addresses, transaction hash submission, and automatic on-chain confirmation.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/86fdb050-b580-42fd-8e41-b0902ebdddb3",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/86fdb050-b580-42fd-8e41-b0902ebdddb3",
+      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
