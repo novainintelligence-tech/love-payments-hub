@@ -152,3 +152,116 @@ export const addProductKeys = createServerFn({ method: "POST" })
     await db.from("products").update({ stock_count: count ?? 0 }).eq("id", data.productId);
     return { added: data.keys.length, stock: count ?? 0 };
   });
+/** Manually registers a Telegram user and sends them an invitation message. */
+export const inviteTelegramUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { telegramId: string; firstName?: string; username?: string; note?: string }) => {
+    const telegramId = Number(String(input.telegramId ?? "").trim());
+    if (!Number.isInteger(telegramId) || telegramId <= 0) throw new Error("Enter a valid numeric Telegram ID");
+    return {
+      telegramId,
+      firstName: (input.firstName ?? "").trim().slice(0, 60) || null,
+      username: (input.username ?? "").trim().replace(/^@/, "").slice(0, 60) || null,
+      note: (input.note ?? "").trim().slice(0, 500) || null,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { getDb, getSettings, miniAppUrl } = await import("./store/db.server");
+    const { sendCard, escapeHtml } = await import("./store/telegram.server");
+    const db = await getDb();
+
+    const { data: existing } = await db
+      .from("bot_users")
+      .select("id")
+      .eq("telegram_id", data.telegramId)
+      .maybeSingle();
+    let created = false;
+    if (!existing) {
+      const { error } = await db.from("bot_users").insert({
+        telegram_id: data.telegramId,
+        username: data.username,
+        first_name: data.firstName,
+      });
+      if (error) throw new Error(error.message);
+      created = true;
+    }
+
+    const settings = await getSettings();
+    const lines = [
+      `👋 <b>Welcome${data.firstName ? ` ${escapeHtml(data.firstName)}` : ""} to ${escapeHtml(settings.store_name)}!</b>`,
+      "",
+      escapeHtml(settings.welcome_message),
+    ];
+    if (data.note) lines.push("", escapeHtml(data.note));
+    lines.push("", "Tap below to open the store, or send /start any time.");
+
+    const sent = await sendCard(data.telegramId, settings.banner_image_url, lines.join("\n"), [
+      [{ text: "🛍 Open store app", web_app: { url: miniAppUrl(settings) } }],
+      [{ text: "📦 Browse in chat", callback_data: "shop" }],
+    ]);
+
+    return {
+      created,
+      delivered: sent !== null,
+      message:
+        sent !== null
+          ? `${created ? "Customer added" : "Customer already existed"} — invitation delivered.`
+          : `${created ? "Customer added" : "Customer already existed"}, but Telegram refused delivery (the user must message the bot at least once).`,
+    };
+  });
+
+/** Renames / edits a product. */
+export const updateProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: number; name?: string; price?: number; description?: string; isActive?: boolean }) => {
+    if (!Number.isInteger(input.id)) throw new Error("Invalid product");
+    const patch: Record<string, unknown> = {};
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (name.length < 2) throw new Error("Product name is too short");
+      patch["name"] = name.slice(0, 120);
+    }
+    if (input.price !== undefined) {
+      if (!Number.isFinite(input.price) || input.price < 0) throw new Error("Price must be a positive number");
+      patch["price"] = Number(input.price.toFixed(2));
+    }
+    if (input.description !== undefined) patch["description"] = input.description.trim().slice(0, 1000) || null;
+    if (input.isActive !== undefined) patch["is_active"] = input.isActive;
+    if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
+    return { id: input.id, patch };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { getDb } = await import("./store/db.server");
+    const db = await getDb();
+    const { error } = await db.from("products").update(data.patch).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: "Product updated." };
+  });
+
+/** Renames a category or subcategory. */
+export const renameCategory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: number; kind: "category" | "subcategory"; name?: string; description?: string }) => {
+    if (!Number.isInteger(input.id)) throw new Error("Invalid category");
+    if (input.kind !== "category" && input.kind !== "subcategory") throw new Error("Invalid kind");
+    const patch: Record<string, unknown> = {};
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (name.length < 2) throw new Error("Name is too short");
+      patch["name"] = name.slice(0, 80);
+    }
+    if (input.description !== undefined) patch["description"] = input.description.trim().slice(0, 500) || null;
+    if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
+    return { id: input.id, kind: input.kind, patch };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { getDb } = await import("./store/db.server");
+    const db = await getDb();
+    const table = data.kind === "category" ? "categories" : "subcategories";
+    const { error } = await db.from(table).update(data.patch).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: `${data.kind === "category" ? "Category" : "Subcategory"} updated.` };
+  });
