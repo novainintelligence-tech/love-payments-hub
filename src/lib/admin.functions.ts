@@ -57,6 +57,92 @@ export const dashboardStats = createServerFn({ method: "GET" })
     };
   });
 
+export const adminDashboardData = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [
+      customers,
+      orders,
+      transactions,
+      products,
+      categories,
+      subcategories,
+      disputes,
+      broadcasts,
+      settings,
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("bot_users")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(250),
+      supabaseAdmin
+        .from("orders")
+        .select("*, bot_users(telegram_id, username)")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin
+        .from("transactions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin.from("products").select("*").order("id"),
+      supabaseAdmin.from("categories").select("*").order("sort_order").order("id"),
+      supabaseAdmin.from("subcategories").select("*").order("id"),
+      supabaseAdmin
+        .from("disputes")
+        .select("*, orders(total_amount), bot_users(telegram_id, username)")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin
+        .from("broadcasts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(30),
+      supabaseAdmin.from("store_settings").select("*").eq("id", 1).maybeSingle(),
+    ]);
+    const results = [
+      customers,
+      orders,
+      transactions,
+      products,
+      categories,
+      subcategories,
+      disputes,
+      broadcasts,
+      settings,
+    ];
+    const failure = results.find((result) => result.error);
+    if (failure?.error) throw new Error(failure.error.message);
+    const completedOrders = (orders.data ?? []).filter((order) => order.status === "completed");
+    return {
+      customers: customers.data ?? [],
+      orders: orders.data ?? [],
+      transactions: transactions.data ?? [],
+      products: products.data ?? [],
+      categories: categories.data ?? [],
+      subcategories: subcategories.data ?? [],
+      disputes: disputes.data ?? [],
+      broadcasts: broadcasts.data ?? [],
+      settings: settings.data,
+      stats: {
+        customers: customers.data?.length ?? 0,
+        orders: completedOrders.length,
+        pendingPayments: (transactions.data ?? []).filter((tx) =>
+          ["pending", "submitted"].includes(tx.status),
+        ).length,
+        revenue: completedOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0),
+        liability: (customers.data ?? []).reduce(
+          (sum, user) => sum + Number(user.wallet_balance ?? 0),
+          0,
+        ),
+        openDisputes: (disputes.data ?? []).filter((dispute) => dispute.status === "opened").length,
+      },
+    };
+  });
+
 export const reviewPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { id: number; action: "approve" | "reject" | "recheck" }) => {
