@@ -7,10 +7,12 @@ export const Route = createFileRoute("/api/public/hooks/verify-payments")({
       POST: async ({ request }) => {
         const authorization = request.headers.get("authorization") ?? "";
         const bearer = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-        const provided = bearer || request.headers.get("x-cron-secret") || request.headers.get("apikey") || "";
-        const accepted = [process.env["CRON_SECRET"], process.env["SUPABASE_PUBLISHABLE_KEY"]].filter(
-          (value): value is string => Boolean(value),
-        );
+        const provided =
+          bearer || request.headers.get("x-cron-secret") || request.headers.get("apikey") || "";
+        const accepted = [
+          process.env["CRON_SECRET"],
+          process.env["SUPABASE_PUBLISHABLE_KEY"],
+        ].filter((value): value is string => Boolean(value));
         if (accepted.length === 0 || !accepted.includes(provided)) {
           return new Response("Unauthorized", { status: 401 });
         }
