@@ -409,14 +409,11 @@ export const saveCategory = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const result =
-      data.kind === "subcategory"
-        ? data.id
-          ? await supabaseAdmin.from("subcategories").update(data.patch).eq("id", data.id)
-          : await supabaseAdmin.from("subcategories").insert(data.patch)
-        : data.id
-          ? await supabaseAdmin.from("categories").update(data.patch).eq("id", data.id)
-          : await supabaseAdmin.from("categories").insert(data.patch);
+    const table = data.kind === "subcategory" ? "subcategories" : "categories";
+    const patch = data.patch as never;
+    const result = data.id
+      ? await supabaseAdmin.from(table).update(patch).eq("id", data.id)
+      : await supabaseAdmin.from(table).insert(patch);
     if (result.error) throw new Error(result.error.message);
     return { message: `${data.kind === "category" ? "Category" : "Subcategory"} saved.` };
   });
