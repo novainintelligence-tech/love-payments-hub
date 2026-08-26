@@ -432,7 +432,7 @@ export const resolveDispute = createServerFn({ method: "POST" })
       .from("disputes")
       .update({
         status: "resolved",
-        resolution: data.resolution,
+        admin_notes: data.resolution,
         resolved_at: new Date().toISOString(),
       })
       .eq("id", data.id)
