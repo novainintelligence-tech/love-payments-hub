@@ -139,7 +139,7 @@ function Dashboard() {
             ["broadcasts", "Broadcasts"],
             ["settings", "Settings"],
           ].map(([value, label]) => (
-            <TabsTrigger value={value} key={value}>
+            <TabsTrigger value={String(value)} key={String(value)}>
               {label}
             </TabsTrigger>
           ))}
@@ -308,7 +308,7 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
         categories={data.categories}
         subcategories={data.subcategories}
         busy={busy}
-        submit={(payload) => run(async () => (await save({ data: payload })).message)}
+        submit={(payload: any) => run(async () => (await save({ data: payload })).message)}
       />
       <div className="panel flex flex-wrap items-center gap-2 p-3">
         <Badge variant="secondary">{selected.length} selected</Badge>
@@ -340,7 +340,7 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
                     data: {
                       ids: selected,
                       action: bulkAction as any,
-                      value: bulkValue ? Number(bulkValue) : undefined,
+                      ...(bulkValue ? { value: Number(bulkValue) } : {}),
                     },
                   })
                 ).message,
@@ -360,9 +360,12 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
             checked={selected.includes(product.id)}
             toggle={() => toggle(product.id)}
             busy={busy}
-            save={(payload) => run(async () => (await save({ data: payload })).message)}
-            add={(keys) =>
-              run(async () => (await addKeys({ data: { productId: product.id, keys } })).message)
+            save={(payload: any) => run(async () => (await save({ data: payload })).message)}
+            add={(keys: any) =>
+              run(async () => {
+                const result = await addKeys({ data: { productId: product.id, keys } });
+                return `Added ${result.added} keys (stock ${result.stock}).`;
+              })
             }
           />
         ))}
@@ -630,7 +633,7 @@ function Customers({ data, busy, run }: { data: AdminData; busy: boolean; run: R
     >
       <InviteForm
         busy={busy}
-        submit={(payload) => run(async () => (await invite({ data: payload })).message)}
+        submit={(payload: any) => run(async () => (await invite({ data: payload })).message)}
       />
       <div className="panel flex flex-wrap gap-2 p-3">
         <Input
@@ -673,7 +676,7 @@ function Customers({ data, busy, run }: { data: AdminData; busy: boolean; run: R
               )
             }
             busy={busy}
-            adjust={(amount, reason) =>
+            adjust={(amount: any, reason: any) =>
               run(
                 async () =>
                   `New balance: ${money((await adjust({ data: { userId: user.id, amount, reason } })).balance)}`,
@@ -803,7 +806,7 @@ function Disputes({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
             key={item.id}
             item={item}
             busy={busy}
-            submit={(resolution) =>
+            submit={(resolution: any) =>
               run(async () => (await resolve({ data: { id: item.id, resolution } })).message)
             }
           />
@@ -871,7 +874,7 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
               run(async () => {
                 const result = await broadcast({ data: { text } });
                 setText("");
-                return `Sent ${result.sent}; ${result.failed} failed.`;
+                return `Broadcast delivered to ${result.sent} customers.`;
               })
             }
           >
@@ -927,12 +930,13 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
           value={form.banner_image_url ?? ""}
           onChange={(e) => set("banner_image_url", e.target.value)}
         />
-        {[
-          ["btc_address", "BTC address"],
-          ["usdt_trc20_address", "USDT TRC20 address"],
-          ["usdt_erc20_address", "USDT ERC20 address"],
-          ["usdc_erc20_address", "USDC ERC20 address"],
-        ].map(([key, label]) => (
+        {(
+          [
+            ["btc_address", "BTC address"],
+            ["usdt_trc20_address", "USDT TRC20 address"],
+            ["usdc_erc20_address", "USDC ERC20 (Ethereum) address"],
+          ] as const
+        ).map(([key, label]) => (
           <Input
             key={key}
             placeholder={label}
@@ -945,8 +949,8 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
           min="5"
           max="1440"
           placeholder="Invoice expiry minutes"
-          value={form.invoice_expiry_minutes ?? 30}
-          onChange={(e) => set("invoice_expiry_minutes", e.target.value)}
+          value={form.payment_expiry_minutes ?? 30}
+          onChange={(e) => set("payment_expiry_minutes", e.target.value)}
         />
         <Input
           type="number"
@@ -960,7 +964,27 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
         <Button
           className="md:col-start-2"
           disabled={busy}
-          onClick={() => run(async () => (await save({ data: form })).message)}
+          onClick={() =>
+            run(
+              async () =>
+                (
+                  await save({
+                    data: {
+                      storeName: String(form.store_name ?? ""),
+                      welcomeMessage: String(form.welcome_message ?? ""),
+                      supportUsername: String(form.support_username ?? ""),
+                      miniAppUrl: String(form.mini_app_url ?? ""),
+                      bannerImageUrl: String(form.banner_image_url ?? ""),
+                      btcAddress: String(form.btc_address ?? ""),
+                      usdtTrc20Address: String(form.usdt_trc20_address ?? ""),
+                      usdcErc20Address: String(form.usdc_erc20_address ?? ""),
+                      paymentExpiryMinutes: Number(form.payment_expiry_minutes ?? 30),
+                      amountTolerancePercent: Number(form.amount_tolerance_percent ?? 2),
+                    },
+                  })
+                ).message,
+            )
+          }
         >
           Save settings
         </Button>
