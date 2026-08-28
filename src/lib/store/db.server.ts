@@ -78,7 +78,7 @@ export async function getOrCreateUser(from: {
         .update({ username: from.username ?? null })
         .eq("id", existing.id);
     }
-    return existing as BotUser;
+    return { ...(existing as BotUser), is_new: false };
   }
   const { data, error } = await db
     .from("bot_users")
@@ -90,8 +90,20 @@ export async function getOrCreateUser(from: {
     .select("*")
     .single();
   if (error) throw error;
-  return data as BotUser;
+  return { ...(data as BotUser), is_new: true };
 }
+
+/** Sends a message to the configured admin chat, when one is set. */
+export async function notifyAdmin(
+  settings: StoreSettings,
+  text: string,
+  markup?: import("./telegram.server").InlineKeyboard,
+): Promise<void> {
+  if (!settings.admin_telegram_id) return;
+  const { sendMessage } = await import("./telegram.server");
+  await sendMessage(Number(settings.admin_telegram_id), text, markup);
+}
+
 
 export async function getState(
   chatId: number,
