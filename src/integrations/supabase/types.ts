@@ -42,6 +42,7 @@ export type Database = {
           updated_at: string
           username: string | null
           wallet_balance: number
+          welcome_bonus_granted: boolean
         }
         Insert: {
           created_at?: string
@@ -52,6 +53,7 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_balance?: number
+          welcome_bonus_granted?: boolean
         }
         Update: {
           created_at?: string
@@ -62,6 +64,7 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_balance?: number
+          welcome_bonus_granted?: boolean
         }
         Relationships: []
       }
@@ -152,6 +155,38 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_promo_log: {
+        Row: {
+          created_at: string
+          id: number
+          run_date: string
+          sent: boolean
+          user_id: number
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          run_date?: string
+          sent?: boolean
+          user_id: number
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          run_date?: string
+          sent?: boolean
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_promo_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "bot_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       disputes: {
         Row: {
           admin_notes: string | null
@@ -199,6 +234,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      job_state: {
+        Row: {
+          created_at: string
+          last_result: Json | null
+          last_run_at: string | null
+          locked_until: string | null
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          last_result?: Json | null
+          last_run_at?: string | null
+          locked_until?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          last_result?: Json | null
+          last_run_at?: string | null
+          locked_until?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       order_items: {
         Row: {
