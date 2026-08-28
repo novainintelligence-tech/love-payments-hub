@@ -669,6 +669,7 @@ export type Database = {
         }
         Returns: number
       }
+      checkout_cart: { Args: { p_user_id: number }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
