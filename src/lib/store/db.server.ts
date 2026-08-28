@@ -34,7 +34,11 @@ export type BotUser = {
   first_name: string | null;
   wallet_balance: number;
   is_banned: boolean;
+  welcome_bonus_granted?: boolean;
+  /** True only on the update that first created this user. */
+  is_new?: boolean;
 };
+
 
 export async function getDb() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
