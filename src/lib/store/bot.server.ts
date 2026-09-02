@@ -309,22 +309,11 @@ async function doCheckout(chatId: number, user: BotUser) {
       `✅ <b>Order #${result.orderId} completed</b>`,
       `Total: <b>${money(result.total)}</b> · New balance: <b>${money(result.balance)}</b>`,
       "",
-      "Your items:",
-      "",
-      ...result.delivery,
+      "📄 Preparing your delivery files…",
     ].join("\n"),
-    [
-      [{ text: "📦 My orders", callback_data: "orders" }],
-      [{ text: "🏠 Menu", callback_data: "menu" }],
-    ],
   );
-  const settings = await getSettings();
-  if (settings.admin_telegram_id) {
-    await sendMessage(
-      Number(settings.admin_telegram_id),
-      `🧾 New order #${result.orderId} — ${money(result.total)} from @${escapeHtml(user.username ?? String(user.telegram_id))}`,
-    );
-  }
+  const { fulfillOrder } = await import("./fulfillment.server");
+  await fulfillOrder(result.orderId);
 }
 
 async function handleText(
@@ -339,6 +328,11 @@ async function handleText(
 
   if (trimmed.startsWith("/start")) {
     await setState(chatId, null);
+    if (!user.welcome_bonus_granted) {
+      const { runOnboarding } = await import("./onboarding.server");
+      await runOnboarding(chatId, user, settings, mainMenu(admin, settings));
+      return;
+    }
     await sendCard(
       chatId,
       settings.banner_image_url,
@@ -792,15 +786,22 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
   }
 
   if (callback) {
-    await handleCallback(
-      chatId,
-      Number(callback.message?.message_id),
-      String(callback.id),
-      String(callback.data ?? ""),
-      from,
-      user,
-      settings,
-    );
+    const callbackId = String(callback.id);
+    const messageId = Number(callback.message?.message_id);
+    const data = String(callback.data ?? "");
+    // Acknowledge FIRST so the button never stays spinning, whatever happens next.
+    await answerCallback(callbackId);
+    if (!data || !Number.isFinite(messageId)) return;
+    try {
+      await handleCallback(chatId, messageId, callbackId, data, from, user, settings);
+    } catch (error) {
+      console.error("[bot] callback failed", data, error);
+      await sendMessage(
+        chatId,
+        "⚠️ Something went wrong handling that action. Please try again.",
+        [[{ text: "🏠 Menu", callback_data: "menu" }]],
+      );
+    }
     return;
   }
 
