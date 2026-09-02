@@ -23,7 +23,8 @@ export type StoreSettings = {
 export function miniAppUrl(settings: StoreSettings): string {
   const configured = settings.mini_app_url?.trim();
   if (configured) return configured;
-  const base = process.env["PUBLIC_SITE_URL"]?.trim() || "https://enrollmentlog.lovable.app";
+  const base = process.env["PUBLIC_SITE_URL"]?.trim();
+  if (!base) throw new Error("PUBLIC_SITE_URL is not configured");
   return `${base.replace(/\/$/, "")}/app`;
 }
 
