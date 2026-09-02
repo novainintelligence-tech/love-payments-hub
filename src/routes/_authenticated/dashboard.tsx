@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Check, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
@@ -864,6 +865,7 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
   const broadcast = useServerFn(broadcastMessage);
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const selectedTemplate = data.templates.find((item: any) => String(item.id) === templateId);
   return (
     <Section
       title="Broadcasts"
@@ -895,20 +897,73 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
         />
         <div className="flex items-center justify-between gap-3">
           <span className="font-mono text-xs text-muted-foreground">{text.length}/3000</span>
-          <Button
-            disabled={busy || text.trim().length < 2}
-            onClick={() =>
-              run(async () => {
-                const result = await broadcast({ data: { text } });
-                setText("");
-                setTemplateId("");
-                return `Broadcast delivered to ${result.sent} customers.`;
-              })
-            }
-          >
-            Send broadcast
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={!text.trim()}
+              onClick={async () => {
+                await navigator.clipboard.writeText(text);
+                toast.success("Message copied to clipboard.");
+              }}
+            >
+              <Copy className="size-4" /> Copy
+            </Button>
+            <Button
+              disabled={busy || text.trim().length < 2}
+              onClick={() =>
+                run(async () => {
+                  const result = await broadcast({ data: { text } });
+                  setText("");
+                  setTemplateId("");
+                  return `Broadcast delivered to ${result.sent} customers.`;
+                })
+              }
+            >
+              Send to all users
+            </Button>
+          </div>
         </div>
+      </div>
+      <div className="flex flex-col gap-3">
+        <h3 className="font-semibold">Saved message templates</h3>
+        {data.templates.map((template: any) => (
+          <article className="panel flex flex-col gap-3 p-4" key={template.id}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-medium">{template.title}</p>
+                <p className="text-xs uppercase text-muted-foreground">{template.category}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(template.body);
+                    toast.success("Template copied to clipboard.");
+                  }}
+                >
+                  <Copy className="size-4" /> Copy
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setTemplateId(String(template.id));
+                    setText(template.body);
+                  }}
+                >
+                  <Check className="size-4" /> Use in composer
+                </Button>
+              </div>
+            </div>
+            <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm text-muted-foreground">
+              {template.body}
+            </p>
+          </article>
+        ))}
+        {!data.templates.length && <Empty label="No saved templates yet." />}
+        {selectedTemplate ? (
+          <p className="text-xs text-muted-foreground">Selected: {selectedTemplate.title}</p>
+        ) : null}
       </div>
       <div className="flex flex-col gap-2">
         {data.broadcasts.map((item: any) => (
