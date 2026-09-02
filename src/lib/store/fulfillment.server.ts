@@ -1,10 +1,16 @@
 /**
- * Shared purchase fulfillment: builds TXT receipts for every purchased item and
- * delivers them to the buyer on Telegram. Safe to call repeatedly — delivery is
+ * Shared purchase fulfillment: delivers files and builds TXT receipts for keys
+ * to the buyer on Telegram. Safe to call repeatedly — delivery is
  * guarded by orders.delivery_status so items are never duplicated.
  */
 import { getDb, getSettings, money, notifyAdmin, type StoreSettings } from "./db.server";
-import { escapeHtml, sendDocument, sendMessage, type InlineKeyboard } from "./telegram.server";
+import {
+  escapeHtml,
+  sendDocument,
+  sendDocumentUrl,
+  sendMessage,
+  type InlineKeyboard,
+} from "./telegram.server";
 
 export type DeliveredItem = {
   id: number;
@@ -12,6 +18,7 @@ export type DeliveredItem = {
   quantity: number;
   price: number;
   delivered_asset: string | null;
+  delivery_status: string;
   product_type: "key" | "file";
 };
 
@@ -70,8 +77,15 @@ export function receiptText(
 }
 
 function fileName(order: OrderForDelivery, item: DeliveredItem, index: number): string {
-  const base = item.product_name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+  const base = item.product_name
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 30);
   return `order-${order.id}-${index + 1}-${base || "item"}.txt`;
+}
+
+function isHttpUrl(value: string | null): value is string {
+  return Boolean(value && /^https?:\/\/[^\s]+$/i.test(value));
 }
 
 async function loadOrder(orderId: number): Promise<OrderForDelivery | null> {
@@ -79,7 +93,7 @@ async function loadOrder(orderId: number): Promise<OrderForDelivery | null> {
   const { data } = await db
     .from("orders")
     .select(
-      "id, total_amount, created_at, delivery_status, bot_users(id, telegram_id, username, first_name), order_items(id, product_name, quantity, price, delivered_asset, products(product_type))",
+      "id, total_amount, created_at, delivery_status, bot_users(id, telegram_id, username, first_name), order_items(id, product_name, quantity, price, delivered_asset, delivery_status, products(product_type))",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -101,6 +115,7 @@ async function loadOrder(orderId: number): Promise<OrderForDelivery | null> {
       quantity: number;
       price: number;
       delivered_asset: string | null;
+      delivery_status: string;
       products: { product_type: "key" | "file" } | null;
     }[];
   };
@@ -117,14 +132,15 @@ async function loadOrder(orderId: number): Promise<OrderForDelivery | null> {
       quantity: item.quantity,
       price: Number(item.price),
       delivered_asset: item.delivered_asset,
+      delivery_status: item.delivery_status ?? "pending",
       product_type: item.products?.product_type ?? "key",
     })),
   };
 }
 
 /**
- * Delivers every item of a completed order as an interactive message plus a TXT
- * file. Returns immediately when the order was already delivered.
+ * Delivers each purchased file as a Telegram document and each key as a TXT
+ * receipt containing the purchased key and order details.
  */
 export async function fulfillOrder(
   orderId: number,
@@ -147,7 +163,10 @@ export async function fulfillOrder(
 
   const order = await loadOrder(orderId);
   if (!order) {
-    await db.from("orders").update({ delivery_status: "failed", delivery_error: "order not found" }).eq("id", orderId);
+    await db
+      .from("orders")
+      .update({ delivery_status: "failed", delivery_error: "order not found" })
+      .eq("id", orderId);
     return { delivered: false, files: 0, reason: "order not found" };
   }
 
@@ -160,12 +179,12 @@ export async function fulfillOrder(
   await sendMessage(
     chatId,
     [
-      "🎉 <b>PAYMENT CONFIRMED — ORDER DELIVERED</b> 🎉",
+      "🎉 <b>PAYMENT CONFIRMED — DELIVERY STARTED</b> 🎉",
       "",
       `🧾 Order <b>#${order.id}</b> · Total <b>${money(order.total_amount)}</b>`,
       `📦 Items: <b>${order.items.length}</b>`,
       "",
-      "📄 Each item below arrives as its own <b>.txt</b> file containing the full key or download link plus all order details.",
+      "📄 Keys arrive in protected TXT receipts. Downloadable products arrive as their configured files.",
       "",
       "⬇️ Your files are on the way…",
     ].join("\n"),
@@ -173,7 +192,8 @@ export async function fulfillOrder(
 
   let files = 0;
   const failures: string[] = [];
-  for (const [index, item] of order.items.entries()) {
+  const pendingItems = order.items.filter((item) => item.delivery_status !== "delivered");
+  for (const [index, item] of pendingItems.entries()) {
     const isKey = item.product_type !== "file";
     const caption = [
       `✅ <b>${escapeHtml(item.product_name)}</b>`,
@@ -184,18 +204,36 @@ export async function fulfillOrder(
         : `Direct link: <code>${escapeHtml(item.delivered_asset ?? "-")}</code>`,
     ].join("\n");
 
-    const sent = await sendDocument(
-      chatId,
-      fileName(order, item, index),
-      receiptText(order, item, settings),
-      caption,
-      index === order.items.length - 1 ? menu : undefined,
-    );
-    if (sent) files += 1;
-    else {
-      failures.push(item.product_name);
+    const sent = isKey
+      ? await sendDocument(
+          chatId,
+          fileName(order, item, index),
+          receiptText(order, item, settings),
+          caption,
+          index === pendingItems.length - 1 ? menu : undefined,
+        )
+      : isHttpUrl(item.delivered_asset)
+        ? await sendDocumentUrl(
+            chatId,
+            item.delivered_asset,
+            caption,
+            index === pendingItems.length - 1 ? menu : undefined,
+          )
+        : null;
+    if (sent) {
+      files += 1;
+      item.delivery_status = "delivered";
+      const { error } = await db
+        .from("order_items")
+        .update({ delivery_status: "delivered" })
+        .eq("id", item.id);
+      if (error) {
+        item.delivery_status = "pending";
+        failures.push(`${item.product_name} status update`);
+      }
+    } else {
       // Fall back to plain text so the buyer still gets the asset.
-      await sendMessage(
+      const fallback = await sendMessage(
         chatId,
         [
           `✅ <b>${escapeHtml(item.product_name)}</b>`,
@@ -203,18 +241,37 @@ export async function fulfillOrder(
           `<code>${escapeHtml(item.delivered_asset ?? "-")}</code>`,
         ].join("\n"),
       );
+      if (fallback !== null) {
+        item.delivery_status = "delivered";
+        const { error } = await db
+          .from("order_items")
+          .update({ delivery_status: "delivered" })
+          .eq("id", item.id);
+        if (error) {
+          item.delivery_status = "pending";
+          failures.push(`${item.product_name} status update`);
+        }
+      } else {
+        failures.push(item.product_name);
+      }
     }
   }
 
-  const ok = failures.length === 0;
-  await db
+  const ok =
+    pendingItems.length === 0 ||
+    (failures.length === 0 && pendingItems.every((item) => item.delivery_status === "delivered"));
+  const { error: orderUpdateError } = await db
     .from("orders")
     .update({
       delivery_status: ok ? "delivered" : "failed",
-      delivered_at: new Date().toISOString(),
+      delivered_at: ok ? new Date().toISOString() : null,
       delivery_error: ok ? null : `File delivery failed: ${failures.join(", ")}`,
     })
     .eq("id", orderId);
+  if (orderUpdateError) {
+    console.error("[fulfillment] order status update failed", orderId, orderUpdateError);
+    return { delivered: false, files, reason: "delivery status could not be saved" };
+  }
 
   await notifyAdmin(
     settings,
@@ -227,7 +284,7 @@ export async function fulfillOrder(
     ].join("\n"),
   );
 
-  return { delivered: ok, files };
+  return { delivered: ok, files, ...(ok ? {} : { reason: "one or more delivery files failed" }) };
 }
 
 /** Retries any completed order whose items were never delivered. */

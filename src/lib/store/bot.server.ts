@@ -367,7 +367,29 @@ async function doCheckout(chatId: number, user: BotUser) {
     ].join("\n"),
   );
   const { fulfillOrder } = await import("./fulfillment.server");
-  await fulfillOrder(result.orderId);
+  try {
+    const delivery = await fulfillOrder(result.orderId);
+    if (!delivery.delivered) {
+      await sendMessage(
+        chatId,
+        "⚠️ Your purchase was completed, but one or more delivery files could not be sent. We will retry automatically, and support has been notified.",
+        [
+          [{ text: "📦 My orders", callback_data: "orders" }],
+          [{ text: "🆘 Support", callback_data: "support" }],
+        ],
+      );
+    }
+  } catch (error) {
+    console.error("[checkout] fulfillment failed", result.orderId, error);
+    await sendMessage(
+      chatId,
+      "⚠️ Your purchase was completed, but delivery is delayed. We will retry automatically. Please open My orders or contact support.",
+      [
+        [{ text: "📦 My orders", callback_data: "orders" }],
+        [{ text: "🆘 Support", callback_data: "support" }],
+      ],
+    );
+  }
 }
 
 async function handleText(

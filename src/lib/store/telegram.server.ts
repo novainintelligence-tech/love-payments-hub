@@ -185,3 +185,18 @@ export async function sendDocument(
     return null;
   }
 }
+
+/** Sends a remote product file through Telegram without exposing bot credentials. */
+export async function sendDocumentUrl(
+  chatId: number,
+  documentUrl: string,
+  caption?: string,
+  markup?: InlineKeyboard,
+): Promise<unknown | null> {
+  return tgSafe("sendDocument", {
+    chat_id: chatId,
+    document: documentUrl,
+    ...(caption ? { caption: caption.length > 1000 ? `${caption.slice(0, 997)}…` : caption, parse_mode: "HTML" } : {}),
+    ...(markup ? { reply_markup: keyboard(markup) } : {}),
+  });
+}
