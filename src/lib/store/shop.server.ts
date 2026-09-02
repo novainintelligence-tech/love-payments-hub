@@ -14,6 +14,7 @@ export type Product = {
   category_id: number | null;
   subcategory_id: number | null;
   image_url: string | null;
+  is_featured: boolean;
 };
 
 export type Category = {
@@ -82,6 +83,48 @@ export async function listProducts(categoryId: number | null) {
   if (categoryId != null) query = query.eq("category_id", categoryId);
   const { data } = await query;
   return (data ?? []) as Product[];
+}
+
+export async function listFeaturedProducts(limit = 8) {
+  const db = await getDb();
+  const { data } = await db
+    .from("products")
+    .select("*")
+    .eq("is_active", true)
+    .eq("is_featured", true)
+    .order("name")
+    .limit(limit);
+  return (data ?? []) as Product[];
+}
+
+/** Remaining stock for many products at once (files are treated as unlimited). */
+export async function stockMap(products: Product[]): Promise<Record<number, number>> {
+  const keyed = products.filter((p) => p.product_type === "key");
+  const map: Record<number, number> = {};
+  for (const p of products) if (p.product_type === "file") map[p.id] = Infinity;
+  if (keyed.length === 0) return map;
+  const db = await getDb();
+  const { data } = await db
+    .from("product_keys")
+    .select("product_id")
+    .eq("is_sold", false)
+    .in(
+      "product_id",
+      keyed.map((p) => p.id),
+    );
+  for (const p of keyed) map[p.id] = 0;
+  for (const row of (data ?? []) as { product_id: number }[]) {
+    map[row.product_id] = (map[row.product_id] ?? 0) + 1;
+  }
+  return map;
+}
+
+export function stockLabel(count: number | undefined): string {
+  if (count === undefined) return "";
+  if (count === Infinity) return "∞ in stock";
+  if (count <= 0) return "sold out";
+  if (count <= 5) return `only ${count} left`;
+  return `${count} in stock`;
 }
 
 export async function getProduct(id: number): Promise<Product | null> {
