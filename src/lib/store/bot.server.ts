@@ -156,16 +156,26 @@ async function showProduct(chatId: number, messageId: number, productId: number)
   return editCard(chatId, messageId, product.image_url, text, markup);
 }
 
-/** Sends every product in a list as its own advert card. */
-async function sendGallery(chatId: number, products: Product[], backData: string) {
-  const withImages = products.slice(0, 10);
+/** Sends a compact, paginated image-first product gallery. */
+async function sendGallery(
+  chatId: number,
+  products: Product[],
+  backData: string,
+  scope: "all" | "cat" | "sub" | "featured",
+  scopeId?: number,
+  page = 0,
+) {
+  const pageSize = 4;
+  const pageCount = Math.max(1, Math.ceil(products.length / pageSize));
+  const currentPage = Math.min(Math.max(page, 0), pageCount - 1);
+  const withImages = products.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const stocks = await stockMap(withImages);
   for (const p of withImages) {
     await sendCard(
       chatId,
       p.image_url,
       [
-        `<b>${escapeHtml(p.name)}</b>`,
+        `${p.is_featured ? "⭐ " : ""}<b>${escapeHtml(p.name)}</b>`,
         escapeHtml((p.description ?? "").slice(0, 300)),
         "",
         `Price: <b>${money(p.price)}</b>`,
@@ -180,10 +190,22 @@ async function sendGallery(chatId: number, products: Product[], backData: string
       ],
     );
   }
-  await sendMessage(chatId, "⬆️ Tap a product above to buy.", [
+  const galleryKey = scopeId == null ? `gal:${scope}` : `gal:${scope}:${scopeId}`;
+  const navigation: InlineKeyboard = [];
+  if (currentPage > 0)
+    navigation.push([{ text: "◀️ Previous", callback_data: `${galleryKey}:${currentPage - 1}` }]);
+  if (currentPage < pageCount - 1)
+    navigation.push([{ text: "Next ▶️", callback_data: `${galleryKey}:${currentPage + 1}` }]);
+  navigation.push([{ text: `Page ${currentPage + 1}/${pageCount}`, callback_data: "noop" }]);
+  navigation.push(
     [{ text: "⬅️ Back", callback_data: backData }],
     [{ text: "🏠 Menu", callback_data: "menu" }],
-  ]);
+  );
+  await sendMessage(
+    chatId,
+    `🛍 <b>Gallery</b> · ${products.length} products\nTap a card action to continue.`,
+    navigation,
+  );
 }
 
 async function showCategories(chatId: number, messageId: number, settings: StoreSettings) {
@@ -201,7 +223,7 @@ async function showCategories(chatId: number, messageId: number, settings: Store
     }
     return editCard(chatId, messageId, settings.banner_image_url, "🛍 <b>All products</b>", [
       ...products.map(productButton),
-      [{ text: "🖼 View as gallery", callback_data: "gal:all" }],
+      [{ text: "🖼 Open gallery", callback_data: "gal:all:0" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ]);
   }
@@ -214,6 +236,7 @@ async function showCategories(chatId: number, messageId: number, settings: Store
       ...categories.map((c) => [
         { text: `${c.image_url ? "🖼 " : "📂 "}${c.name}`, callback_data: `cat:${c.id}` },
       ]),
+      [{ text: "🖼 Browse all products", callback_data: "gal:all:0" }],
       [{ text: "⭐ Featured products", callback_data: "featured" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ],
@@ -232,7 +255,7 @@ async function showCategory(chatId: number, messageId: number, categoryId: numbe
     ...products.filter((p) => !p.subcategory_id).map(productButton),
   ];
   if (products.length > 0)
-    rows.push([{ text: "🖼 View as gallery", callback_data: `gal:cat:${categoryId}` }]);
+    rows.push([{ text: "🖼 Open category gallery", callback_data: `gal:cat:${categoryId}:0` }]);
   rows.push([{ text: "⬅️ Categories", callback_data: "shop" }]);
   const text = [
     `📂 <b>${escapeHtml(category.name)}</b>`,
@@ -250,7 +273,9 @@ async function showSubcategory(chatId: number, messageId: number, subcategoryId:
   const products = await listProductsBySubcategory(subcategoryId);
   const rows: InlineKeyboard = [...products.map(productButton)];
   if (products.length > 0)
-    rows.push([{ text: "🖼 View as gallery", callback_data: `gal:sub:${subcategoryId}` }]);
+    rows.push([
+      { text: "🖼 Open subcategory gallery", callback_data: `gal:sub:${subcategoryId}:0` },
+    ]);
   rows.push([
     { text: "⬅️ Back", callback_data: sub.category_id ? `cat:${sub.category_id}` : "shop" },
   ]);
@@ -577,7 +602,7 @@ async function handleCallback(
       break;
     case "featured": {
       const featured = await listFeaturedProducts(10);
-      await sendGallery(chatId, featured, "shop");
+      await sendGallery(chatId, featured, "shop", "featured");
       break;
     }
     case "cat": {
@@ -592,12 +617,27 @@ async function handleCallback(
       await answerCallback(callbackId, "Loading gallery…");
       const scope = parts[1];
       const id = Number(parts[2]);
+      const pagePart = scope === "all" || scope === "featured" ? parts[2] : parts[3];
+      const page = Number.isInteger(Number(pagePart)) ? Number(pagePart) : 0;
       const products =
         scope === "sub"
           ? await listProductsBySubcategory(id)
-          : await listProducts(scope === "cat" ? id : null);
+          : scope === "featured"
+            ? await listFeaturedProducts(100)
+            : await listProducts(scope === "cat" ? id : null);
       const back = scope === "sub" ? `sub:${id}` : scope === "cat" ? `cat:${id}` : "shop";
-      await sendGallery(chatId, products, back);
+      if (scope !== "all" && scope !== "cat" && scope !== "sub" && scope !== "featured") {
+        await answerCallback(callbackId, "Gallery not found", true);
+        break;
+      }
+      await sendGallery(
+        chatId,
+        products,
+        back,
+        scope as "all" | "cat" | "sub" | "featured",
+        scope === "cat" || scope === "sub" ? id : undefined,
+        page,
+      );
       break;
     }
     case "prod":
