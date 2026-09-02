@@ -226,7 +226,9 @@ export async function listOrders(userId: number) {
   const db = await getDb();
   const { data } = await db
     .from("orders")
-    .select("id, total_amount, status, dispute_status, created_at")
+    .select(
+      "id, total_amount, status, dispute_status, created_at, order_items(product_name, quantity, delivered_asset)",
+    )
     .eq("user_id", userId)
     .order("id", { ascending: false })
     .limit(15);
@@ -236,6 +238,7 @@ export async function listOrders(userId: number) {
     status: string;
     dispute_status: string;
     created_at: string;
+    order_items: { product_name: string; quantity: number; delivered_asset: string | null }[];
   }[];
 }
 

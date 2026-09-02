@@ -386,6 +386,7 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
     imageUrl: initial?.image_url ?? "",
     downloadLink: initial?.download_link ?? "",
     isActive: initial?.is_active ?? true,
+    isFeatured: initial?.is_featured ?? false,
   });
   const set = (key: string, value: unknown) => setForm((old) => ({ ...old, [key]: value }));
   return (
@@ -437,11 +438,7 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
             </option>
           ))}
       </select>
-      <Input
-        placeholder="Image URL"
-        value={form.imageUrl}
-        onChange={(e) => set("imageUrl", e.target.value)}
-      />
+      <ImageField value={form.imageUrl} onChange={(value) => set("imageUrl", value)} />
       <Input
         placeholder="Download URL"
         value={form.downloadLink}
@@ -454,6 +451,14 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
           onChange={(e) => set("isActive", e.target.checked)}
         />{" "}
         Active
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={form.isFeatured}
+          onChange={(e) => set("isFeatured", e.target.checked)}
+        />{" "}
+        Featured
       </label>
       <Textarea
         className="md:col-span-2 lg:col-span-3"
@@ -569,7 +574,8 @@ function Categories({ data, busy, run }: { data: AdminData; busy: boolean; run: 
 function CategoryForm({ initial, kind = "category", categories = [], busy, submit }: any) {
   const [name, setName] = useState(initial?.name ?? ""),
     [description, setDescription] = useState(initial?.description ?? ""),
-    [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? "");
+    [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? ""),
+    [imageUrl, setImageUrl] = useState(initial?.image_url ?? "");
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
@@ -595,18 +601,22 @@ function CategoryForm({ initial, kind = "category", categories = [], busy, submi
         <Button
           size="sm"
           disabled={busy || name.trim().length < 2}
-          onClick={() => submit({ id: initial?.id, kind, name, description, categoryId })}
+          onClick={() => submit({ id: initial?.id, kind, name, description, categoryId, imageUrl })}
         >
           {initial ? "Save" : `Add ${kind}`}
         </Button>
       </div>
       {kind === "category" && (
-        <Input
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
+        <>
+          <Input
+            placeholder="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <ImageField value={imageUrl} onChange={setImageUrl} />
+        </>
       )}
+      {kind === "subcategory" && <ImageField value={imageUrl} onChange={setImageUrl} />}
     </div>
   );
 }
@@ -853,12 +863,29 @@ function DisputeRow({ item, busy, submit }: any) {
 function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: Run }) {
   const broadcast = useServerFn(broadcastMessage);
   const [text, setText] = useState("");
+  const [templateId, setTemplateId] = useState("");
   return (
     <Section
       title="Broadcasts"
       description="Send a Telegram announcement to every active customer."
     >
       <div className="panel flex flex-col gap-3 p-4">
+        <select
+          className={field}
+          value={templateId}
+          onChange={(e) => {
+            const template = data.templates.find((item: any) => String(item.id) === e.target.value);
+            setTemplateId(e.target.value);
+            if (template) setText(template.body);
+          }}
+        >
+          <option value="">Choose a saved message template</option>
+          {data.templates.map((template: any) => (
+            <option value={template.id} key={template.id}>
+              {template.category}: {template.title}
+            </option>
+          ))}
+        </select>
         <Textarea
           rows={6}
           maxLength={3000}
@@ -874,6 +901,7 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
               run(async () => {
                 const result = await broadcast({ data: { text } });
                 setText("");
+                setTemplateId("");
                 return `Broadcast delivered to ${result.sent} customers.`;
               })
             }
@@ -891,6 +919,44 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
         ))}
       </div>
     </Section>
+  );
+}
+
+function ImageField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  async function upload(file: File) {
+    setUploading(true);
+    try {
+      const path = `${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80)}`;
+      const { error } = await supabase.storage.from("media").upload(path, file, { upsert: false });
+      if (error) throw error;
+      onChange(`/api/public/media/${path}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? `Image upload failed: ${error.message}` : "Image upload failed",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Input placeholder="Image URL" value={value} onChange={(e) => onChange(e.target.value)} />
+      <label className="shrink-0 cursor-pointer rounded-md border border-input px-3 py-2 text-sm">
+        {uploading ? "Uploading..." : "Upload"}
+        <input
+          className="hidden"
+          type="file"
+          accept="image/*"
+          disabled={uploading}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void upload(file);
+            e.currentTarget.value = "";
+          }}
+        />
+      </label>
+    </div>
   );
 }
 
@@ -925,10 +991,9 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
           value={form.mini_app_url ?? ""}
           onChange={(e) => set("mini_app_url", e.target.value)}
         />
-        <Input
-          placeholder="Banner image URL"
+        <ImageField
           value={form.banner_image_url ?? ""}
-          onChange={(e) => set("banner_image_url", e.target.value)}
+          onChange={(value) => set("banner_image_url", value)}
         />
         {(
           [

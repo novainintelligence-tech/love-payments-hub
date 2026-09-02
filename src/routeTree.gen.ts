@@ -14,7 +14,9 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as ApiPublicHooksDailyPromoRouteImport } from './routes/api/public/hooks/daily-promo'
 import { Route as ApiPublicHooksVerifyPaymentsRouteImport } from './routes/api/public/hooks/verify-payments'
+import { Route as ApiPublicMediaSplatRouteImport } from './routes/api/public/media/$'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,12 +43,23 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicHooksDailyPromoRoute =
+  ApiPublicHooksDailyPromoRouteImport.update({
+    id: '/api/public/hooks/daily-promo',
+    path: '/api/public/hooks/daily-promo',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksVerifyPaymentsRoute =
   ApiPublicHooksVerifyPaymentsRouteImport.update({
     id: '/api/public/hooks/verify-payments',
     path: '/api/public/hooks/verify-payments',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicMediaSplatRoute = ApiPublicMediaSplatRouteImport.update({
+  id: '/api/public/media/$',
+  path: '/api/public/media/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTelegramWebhookRoute =
   ApiPublicTelegramWebhookRouteImport.update({
     id: '/api/public/telegram/webhook',
@@ -59,7 +72,9 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/api/public/hooks/daily-promo': typeof ApiPublicHooksDailyPromoRoute
   '/api/public/hooks/verify-payments': typeof ApiPublicHooksVerifyPaymentsRoute
+  '/api/public/media/$': typeof ApiPublicMediaSplatRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -67,7 +82,9 @@ export interface FileRoutesByTo {
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/api/public/hooks/daily-promo': typeof ApiPublicHooksDailyPromoRoute
   '/api/public/hooks/verify-payments': typeof ApiPublicHooksVerifyPaymentsRoute
+  '/api/public/media/$': typeof ApiPublicMediaSplatRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesById {
@@ -77,7 +94,9 @@ export interface FileRoutesById {
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/api/public/hooks/daily-promo': typeof ApiPublicHooksDailyPromoRoute
   '/api/public/hooks/verify-payments': typeof ApiPublicHooksVerifyPaymentsRoute
+  '/api/public/media/$': typeof ApiPublicMediaSplatRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRouteTypes {
@@ -87,7 +106,9 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/dashboard'
+    | '/api/public/hooks/daily-promo'
     | '/api/public/hooks/verify-payments'
+    | '/api/public/media/$'
     | '/api/public/telegram/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -95,7 +116,9 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/dashboard'
+    | '/api/public/hooks/daily-promo'
     | '/api/public/hooks/verify-payments'
+    | '/api/public/media/$'
     | '/api/public/telegram/webhook'
   id:
     | '__root__'
@@ -104,7 +127,9 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/_authenticated/dashboard'
+    | '/api/public/hooks/daily-promo'
     | '/api/public/hooks/verify-payments'
+    | '/api/public/media/$'
     | '/api/public/telegram/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -113,7 +138,9 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AppRoute: typeof AppRoute
   AuthRoute: typeof AuthRoute
+  ApiPublicHooksDailyPromoRoute: typeof ApiPublicHooksDailyPromoRoute
   ApiPublicHooksVerifyPaymentsRoute: typeof ApiPublicHooksVerifyPaymentsRoute
+  ApiPublicMediaSplatRoute: typeof ApiPublicMediaSplatRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
 
@@ -154,11 +181,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/hooks/daily-promo': {
+      id: '/api/public/hooks/daily-promo'
+      path: '/api/public/hooks/daily-promo'
+      fullPath: '/api/public/hooks/daily-promo'
+      preLoaderRoute: typeof ApiPublicHooksDailyPromoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/verify-payments': {
       id: '/api/public/hooks/verify-payments'
       path: '/api/public/hooks/verify-payments'
       fullPath: '/api/public/hooks/verify-payments'
       preLoaderRoute: typeof ApiPublicHooksVerifyPaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/media/$': {
+      id: '/api/public/media/$'
+      path: '/api/public/media/$'
+      fullPath: '/api/public/media/$'
+      preLoaderRoute: typeof ApiPublicMediaSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/telegram/webhook': {
@@ -187,7 +228,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AppRoute: AppRoute,
   AuthRoute: AuthRoute,
+  ApiPublicHooksDailyPromoRoute: ApiPublicHooksDailyPromoRoute,
   ApiPublicHooksVerifyPaymentsRoute: ApiPublicHooksVerifyPaymentsRoute,
+  ApiPublicMediaSplatRoute: ApiPublicMediaSplatRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
 export const routeTree = rootRouteImport

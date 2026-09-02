@@ -71,6 +71,7 @@ export const adminDashboardData = createServerFn({ method: "GET" })
       subcategories,
       disputes,
       broadcasts,
+      templates,
       settings,
     ] = await Promise.all([
       supabaseAdmin
@@ -101,6 +102,7 @@ export const adminDashboardData = createServerFn({ method: "GET" })
         .select("*")
         .order("created_at", { ascending: false })
         .limit(30),
+      supabaseAdmin.from("message_templates").select("*").order("category").order("title"),
       supabaseAdmin.from("store_settings").select("*").eq("id", 1).maybeSingle(),
     ]);
     const results = [
@@ -112,6 +114,7 @@ export const adminDashboardData = createServerFn({ method: "GET" })
       subcategories,
       disputes,
       broadcasts,
+      templates,
       settings,
     ];
     const failure = results.find((result) => result.error);
@@ -126,6 +129,7 @@ export const adminDashboardData = createServerFn({ method: "GET" })
       subcategories: subcategories.data ?? [],
       disputes: disputes.data ?? [],
       broadcasts: broadcasts.data ?? [],
+      templates: templates.data ?? [],
       settings: settings.data,
       stats: {
         customers: customers.data?.length ?? 0,
@@ -308,6 +312,7 @@ export const saveProduct = createServerFn({ method: "POST" })
       imageUrl?: string;
       downloadLink?: string;
       isActive?: boolean;
+      isFeatured?: boolean;
     }) => {
       const name = input.name.trim().slice(0, 120);
       if (name.length < 2 || !Number.isFinite(input.price) || input.price < 0)
@@ -326,6 +331,7 @@ export const saveProduct = createServerFn({ method: "POST" })
           image_url: input.imageUrl?.trim().slice(0, 1000) || null,
           download_link: input.downloadLink?.trim().slice(0, 1000) || null,
           is_active: input.isActive ?? true,
+          is_featured: input.isFeatured ?? false,
         },
       };
     },
@@ -381,6 +387,7 @@ export const saveCategory = createServerFn({ method: "POST" })
       description?: string;
       categoryId?: number;
       sortOrder?: number;
+      imageUrl?: string;
     }) => {
       const name = input.name.trim().slice(0, 80);
       if (name.length < 2) throw new Error("Name is too short");
@@ -402,6 +409,7 @@ export const saveCategory = createServerFn({ method: "POST" })
                 name,
                 description: input.description?.trim().slice(0, 500) || null,
                 sort_order: input.sortOrder ?? 0,
+                image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               },
       };
     },

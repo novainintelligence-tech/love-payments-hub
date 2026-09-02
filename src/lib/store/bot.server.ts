@@ -35,7 +35,9 @@ import {
   listOrders,
   listProducts,
   listProductsBySubcategory,
+  listFeaturedProducts,
   listSubcategories,
+  stockMap,
   orderDetail,
   type Product,
 } from "./shop.server";
@@ -157,6 +159,7 @@ async function showProduct(chatId: number, messageId: number, productId: number)
 /** Sends every product in a list as its own advert card. */
 async function sendGallery(chatId: number, products: Product[], backData: string) {
   const withImages = products.slice(0, 10);
+  const stocks = await stockMap(withImages);
   for (const p of withImages) {
     await sendCard(
       chatId,
@@ -166,6 +169,7 @@ async function sendGallery(chatId: number, products: Product[], backData: string
         escapeHtml((p.description ?? "").slice(0, 300)),
         "",
         `Price: <b>${money(p.price)}</b>`,
+        `Stock: <b>${p.product_type === "file" ? "unlimited" : (stocks[p.id] ?? 0)}</b>`,
       ].join("\n"),
       [
         [
@@ -210,6 +214,7 @@ async function showCategories(chatId: number, messageId: number, settings: Store
       ...categories.map((c) => [
         { text: `${c.image_url ? "🖼 " : "📂 "}${c.name}`, callback_data: `cat:${c.id}` },
       ]),
+      [{ text: "⭐ Featured products", callback_data: "featured" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ],
   );
@@ -570,6 +575,11 @@ async function handleCallback(
     case "shop":
       await showCategories(chatId, messageId, settings);
       break;
+    case "featured": {
+      const featured = await listFeaturedProducts(10);
+      await sendGallery(chatId, featured, "shop");
+      break;
+    }
     case "cat": {
       await showCategory(chatId, messageId, Number(parts[1]));
       break;
@@ -796,11 +806,9 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
       await handleCallback(chatId, messageId, callbackId, data, from, user, settings);
     } catch (error) {
       console.error("[bot] callback failed", data, error);
-      await sendMessage(
-        chatId,
-        "⚠️ Something went wrong handling that action. Please try again.",
-        [[{ text: "🏠 Menu", callback_data: "menu" }]],
-      );
+      await sendMessage(chatId, "⚠️ Something went wrong handling that action. Please try again.", [
+        [{ text: "🏠 Menu", callback_data: "menu" }],
+      ]);
     }
     return;
   }
@@ -839,6 +847,43 @@ export async function sweepPendingPayments(): Promise<{
     .lt("expires_at", new Date().toISOString())
     .select("id");
   return { checked: rows.length, credited, expired: (expired ?? []).length };
+}
+
+export async function sendDailyPromo() {
+  const db = await getDb();
+  const runDate = new Date().toISOString().slice(0, 10);
+  const { data: templates } = await db
+    .from("message_templates")
+    .select("body")
+    .eq("category", "advertising")
+    .ilike("title", "%daily%")
+    .limit(1);
+  const featured = await listFeaturedProducts(3);
+  const text =
+    templates?.[0]?.body ??
+    (featured.length
+      ? `⭐ Featured today\n\n${featured.map((p) => `${p.name} - ${money(p.price)}`).join("\n")}\n\nOpen the store to shop now.`
+      : "⭐ Check out the store today for our latest digital products.");
+  const { data: users } = await db
+    .from("bot_users")
+    .select("id, telegram_id")
+    .eq("is_banned", false);
+  let sent = 0;
+  for (const user of (users ?? []) as { id: number; telegram_id: number }[]) {
+    const { data: existing } = await db
+      .from("daily_promo_log")
+      .select("id")
+      .eq("run_date", runDate)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existing) continue;
+    const delivered = await sendMessage(Number(user.telegram_id), text);
+    await db
+      .from("daily_promo_log")
+      .insert({ run_date: runDate, user_id: user.id, sent: delivered !== null });
+    if (delivered !== null) sent += 1;
+  }
+  return { runDate, sent, subscribers: users?.length ?? 0 };
 }
 
 export { notifyAdminPending };

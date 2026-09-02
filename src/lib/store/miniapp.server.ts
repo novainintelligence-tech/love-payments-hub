@@ -10,6 +10,8 @@ import {
   getCart,
   listCategories,
   listProducts,
+  listFeaturedProducts,
+  stockMap,
   listOrders,
   listSubcategories,
   type Product,
@@ -53,7 +55,7 @@ export async function authenticate(initData: string): Promise<MiniAppUser> {
   return { user, settings };
 }
 
-function publicProduct(p: Product) {
+function publicProduct(p: Product, stock: number) {
   return {
     id: p.id,
     name: p.name,
@@ -62,19 +64,24 @@ function publicProduct(p: Product) {
     image_url: p.image_url,
     category_id: p.category_id,
     subcategory_id: p.subcategory_id,
-    in_stock: p.product_type === "file" || p.stock_count > 0,
+    stock: p.product_type === "file" ? null : stock,
+    in_stock: p.product_type === "file" || stock > 0,
+    is_featured: p.is_featured,
   };
 }
 
 export async function bootstrap(initData: string) {
   const { user, settings } = await authenticate(initData);
   const db = await getDb();
-  const [categories, products, cart, orders] = await Promise.all([
+  const [categories, products, featured, cart, orders] = await Promise.all([
     listCategories(),
     listProducts(null),
+    listFeaturedProducts(),
     getCart(user.id),
     listOrders(user.id),
   ]);
+  const allProducts = [...products, ...featured, ...cart.map((row) => row.product)];
+  const stocks = await stockMap([...new Map(allProducts.map((p) => [p.id, p])).values()]);
   const subs = await Promise.all(categories.map((c) => listSubcategories(c.id)));
   const { data: fresh } = await db
     .from("bot_users")
@@ -108,11 +115,12 @@ export async function bootstrap(initData: string) {
         image_url: s.image_url,
       })),
     })),
-    products: products.map(publicProduct),
+    products: products.map((p) => publicProduct(p, stocks[p.id] ?? 0)),
+    featured: featured.map((p) => publicProduct(p, stocks[p.id] ?? 0)),
     cart: cart.map((row) => ({
       id: row.id,
       quantity: row.quantity,
-      product: publicProduct(row.product),
+      product: publicProduct(row.product, stocks[row.product.id] ?? 0),
     })),
     cartTotal: cartTotal(cart),
     orders,

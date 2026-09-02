@@ -151,6 +151,47 @@ function MiniApp() {
     return data.products;
   }, [data, categoryId, subcategoryId]);
 
+  const productCard = (product: Boot["products"][number]) => (
+    <article key={product.id} className="overflow-hidden rounded-2xl border border-border bg-card">
+      {product.image_url ? (
+        <img
+          src={product.image_url}
+          alt={product.name}
+          loading="lazy"
+          className="h-40 w-full object-cover"
+        />
+      ) : null}
+      <div className="flex flex-col gap-2 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-semibold">{product.name}</p>
+          <span className="shrink-0 font-semibold text-primary">{usd(product.price)}</span>
+        </div>
+        {product.description ? (
+          <p className="line-clamp-3 text-sm text-muted-foreground">{product.description}</p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {product.stock === null
+            ? "Unlimited availability"
+            : product.stock > 0
+              ? `${product.stock} in stock`
+              : "Out of stock"}
+        </p>
+        <Button
+          disabled={busy || !product.in_stock}
+          onClick={() =>
+            run(async () => {
+              await addToCartFn({ data: { initData: initData!, productId: product.id } });
+              await refresh(initData!);
+              setNotice(`${product.name} added to your cart.`);
+            })
+          }
+        >
+          {product.in_stock ? "Add to cart" : "Out of stock"}
+        </Button>
+      </div>
+    </article>
+  );
+
   const category = data?.categories.find((c) => c.id === categoryId) ?? null;
   const subcategory = category?.subcategories.find((s) => s.id === subcategoryId) ?? null;
 
@@ -244,6 +285,12 @@ function MiniApp() {
                   </button>
                 ))}
               </div>
+              {data.featured.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  <h2 className="text-base font-semibold">Featured</h2>
+                  {data.featured.map(productCard)}
+                </div>
+              ) : null}
             </>
           )}
 
@@ -251,46 +298,7 @@ function MiniApp() {
             {visibleProducts.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nothing here yet.</p>
             ) : null}
-            {visibleProducts.map((product) => (
-              <article
-                key={product.id}
-                className="overflow-hidden rounded-2xl border border-border bg-card"
-              >
-                {product.image_url ? (
-                  <img
-                    src={product.image_url}
-                    alt={product.name}
-                    loading="lazy"
-                    className="h-40 w-full object-cover"
-                  />
-                ) : null}
-                <div className="flex flex-col gap-2 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold">{product.name}</p>
-                    <span className="shrink-0 font-semibold text-primary">
-                      {usd(product.price)}
-                    </span>
-                  </div>
-                  {product.description ? (
-                    <p className="line-clamp-3 text-sm text-muted-foreground">
-                      {product.description}
-                    </p>
-                  ) : null}
-                  <Button
-                    disabled={busy || !product.in_stock}
-                    onClick={() =>
-                      run(async () => {
-                        await addToCartFn({ data: { initData: initData!, productId: product.id } });
-                        await refresh(initData!);
-                        setNotice(`${product.name} added to your cart.`);
-                      })
-                    }
-                  >
-                    {product.in_stock ? "Add to cart" : "Out of stock"}
-                  </Button>
-                </div>
-              </article>
-            ))}
+            {visibleProducts.map(productCard)}
           </div>
         </section>
       ) : null}
@@ -451,6 +459,21 @@ function MiniApp() {
                 {usd(Number(order.total_amount))} · {order.status} ·{" "}
                 {new Date(order.created_at).toLocaleDateString()}
               </p>
+              {order.order_items?.map((item) => (
+                <div
+                  key={`${order.id}-${item.product_name}`}
+                  className="mt-2 border-t border-border pt-2"
+                >
+                  <p>
+                    {item.product_name} x {item.quantity}
+                  </p>
+                  {item.delivered_asset ? (
+                    <p className="break-all whitespace-pre-wrap text-xs text-muted-foreground">
+                      {item.delivered_asset}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
             </div>
           ))}
         </section>
