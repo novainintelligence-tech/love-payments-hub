@@ -4,7 +4,8 @@ import { webhookSecret } from "@/routes/api/public/telegram/webhook";
 function authorized(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   const bearer = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  const provided = bearer || request.headers.get("x-cron-secret") || request.headers.get("apikey") || "";
+  const provided =
+    bearer || request.headers.get("x-cron-secret") || request.headers.get("apikey") || "";
   return Boolean(process.env["CRON_SECRET"] && provided === process.env["CRON_SECRET"]);
 }
 
@@ -14,10 +15,14 @@ export const Route = createFileRoute("/api/public/hooks/configure-telegram")({
       POST: async ({ request }) => {
         if (!authorized(request)) return new Response("Unauthorized", { status: 401 });
         const botToken = process.env["TELEGRAM_BOT_TOKEN"];
-        const siteUrl = process.env["PUBLIC_SITE_URL"]?.trim().replace(/\/$/, "");
+        const siteUrl = (
+          process.env["PUBLIC_SITE_URL"]?.trim() ||
+          process.env["VITE_SITE_URL"]?.trim() ||
+          "https://enrollmentlog.lovable.app"
+        ).replace(/\/$/, "");
         if (!botToken || !siteUrl) {
           return Response.json(
-            { ok: false, error: "TELEGRAM_BOT_TOKEN and PUBLIC_SITE_URL are required" },
+            { ok: false, error: "TELEGRAM_BOT_TOKEN is required" },
             { status: 503 },
           );
         }
@@ -39,7 +44,10 @@ export const Route = createFileRoute("/api/public/hooks/configure-telegram")({
           return Response.json({ ok: true, configured_url: url, webhook: info });
         } catch (error) {
           console.error("[configure-telegram]", error);
-          return Response.json({ ok: false, error: "Telegram webhook configuration failed" }, { status: 502 });
+          return Response.json(
+            { ok: false, error: "Telegram webhook configuration failed" },
+            { status: 502 },
+          );
         }
       },
     },

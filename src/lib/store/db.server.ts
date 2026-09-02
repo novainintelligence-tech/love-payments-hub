@@ -23,8 +23,10 @@ export type StoreSettings = {
 export function miniAppUrl(settings: StoreSettings): string {
   const configured = settings.mini_app_url?.trim();
   if (configured) return configured;
-  const base = process.env["PUBLIC_SITE_URL"]?.trim();
-  if (!base) throw new Error("PUBLIC_SITE_URL is not configured");
+  const base =
+    process.env["PUBLIC_SITE_URL"]?.trim() ||
+    process.env["VITE_SITE_URL"]?.trim() ||
+    "https://enrollmentlog.lovable.app";
   return `${base.replace(/\/$/, "")}/app`;
 }
 
@@ -39,7 +41,6 @@ export type BotUser = {
   /** True only on the update that first created this user. */
   is_new?: boolean;
 };
-
 
 export async function getDb() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -104,7 +105,6 @@ export async function notifyAdmin(
   const { sendMessage } = await import("./telegram.server");
   await sendMessage(Number(settings.admin_telegram_id), text, markup);
 }
-
 
 export async function getState(
   chatId: number,
