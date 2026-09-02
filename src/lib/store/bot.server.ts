@@ -773,7 +773,11 @@ async function handleCallback(
         [[{ text: "⬅️ Menu", callback_data: "menu" }]],
       );
       break;
+    case "noop":
+      await answerCallback(callbackId, "This action is not available right now.", true);
+      break;
     default:
+      await answerCallback(callbackId, "Unknown button action. Please open /menu again.", true);
       break;
   }
   await answerCallback(callbackId);

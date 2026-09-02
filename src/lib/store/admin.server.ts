@@ -23,14 +23,17 @@ export const adminMenu: InlineKeyboard = [
     { text: "🔑 Add keys", callback_data: "adm:addkeys" },
     { text: "🗂 Add category", callback_data: "adm:addcat" },
   ],
+  [{ text: "🗂 Manage categories", callback_data: "adm:categories" }],
   [
     { text: "👥 Users", callback_data: "adm:users" },
     { text: "⚖️ Disputes", callback_data: "adm:disputes" },
   ],
   [
     { text: "📣 Broadcast", callback_data: "adm:broadcast" },
+    { text: "📝 Templates", callback_data: "adm:templates" },
     { text: "💵 Adjust balance", callback_data: "adm:balance" },
   ],
+  [{ text: "⭐ Send daily promo", callback_data: "adm:promo" }],
   [
     { text: "⚙️ Wallets & settings", callback_data: "adm:settings" },
     { text: "🏠 Store menu", callback_data: "menu" },
@@ -106,11 +109,11 @@ async function pendingPayments(): Promise<{ text: string; markup: InlineKeyboard
   return { text: ["💳 <b>Payments awaiting review</b>", "", ...lines].join("\n\n"), markup };
 }
 
-async function productList(): Promise<string> {
+async function productList(): Promise<{ text: string; markup: InlineKeyboard }> {
   const db = await getDb();
   const { data } = await db
     .from("products")
-    .select("id, name, price, stock_count, is_active")
+    .select("id, name, price, stock_count, is_active, is_featured, product_type")
     .order("id");
   const rows = (data ?? []) as {
     id: number;
@@ -118,16 +121,86 @@ async function productList(): Promise<string> {
     price: number;
     stock_count: number;
     is_active: boolean;
+    is_featured: boolean;
+    product_type: string;
   }[];
-  if (rows.length === 0) return "📦 No products yet. Use <b>Add product</b>.";
-  return [
-    "📦 <b>Products</b>",
-    "",
-    ...rows.map(
-      (p) =>
-        `#${p.id} ${escapeHtml(p.name)} — ${money(p.price)} · stock ${p.stock_count}${p.is_active ? "" : " · hidden"}`,
-    ),
-  ].join("\n");
+  if (rows.length === 0)
+    return {
+      text: "📦 No products yet. Use <b>Add product</b>.",
+      markup: [[{ text: "⬅️ Admin", callback_data: "adm" }]],
+    };
+  const markup: InlineKeyboard = rows.flatMap((product) => [
+    [
+      {
+        text: `${product.is_active ? "🟢" : "⚪"} ${product.name}`.slice(0, 60),
+        callback_data: `adm:product:${product.id}`,
+      },
+    ],
+  ]);
+  markup.push(
+    [{ text: "➕ Add product", callback_data: "adm:addproduct" }],
+    [{ text: "🔑 Add keys", callback_data: "adm:addkeys" }],
+    [{ text: "⬅️ Admin", callback_data: "adm" }],
+  );
+  return {
+    text: [
+      "📦 <b>Products</b>",
+      "",
+      ...rows.map(
+        (p) =>
+          `#${p.id} ${escapeHtml(p.name)} — ${money(p.price)} · ${p.product_type === "file" ? "unlimited" : `stock ${p.stock_count}`}${p.is_active ? "" : " · hidden"}${p.is_featured ? " · ⭐" : ""}`,
+      ),
+    ].join("\n"),
+    markup,
+  };
+}
+
+async function productDetail(id: number): Promise<{ text: string; markup: InlineKeyboard }> {
+  const db = await getDb();
+  const { data } = await db.from("products").select("*").eq("id", id).maybeSingle();
+  if (!data)
+    return {
+      text: "Product not found.",
+      markup: [[{ text: "⬅️ Products", callback_data: "adm:products" }]],
+    };
+  const product = data as {
+    id: number;
+    name: string;
+    price: number;
+    stock_count: number;
+    is_active: boolean;
+    is_featured: boolean;
+    product_type: string;
+    image_url: string | null;
+    description: string | null;
+  };
+  return {
+    text: [
+      `📦 <b>${escapeHtml(product.name)}</b>`,
+      "",
+      escapeHtml(product.description ?? "No description."),
+      `Price: <b>${money(product.price)}</b>`,
+      `Stock: <b>${product.product_type === "file" ? "unlimited" : product.stock_count}</b>`,
+      `Status: <b>${product.is_active ? "active" : "hidden"}</b> · Featured: <b>${product.is_featured ? "yes" : "no"}</b>`,
+      `Image: <code>${escapeHtml(product.image_url ?? "not set")}</code>`,
+    ].join("\n"),
+    markup: [
+      [
+        {
+          text: product.is_active ? "⚪ Hide product" : "🟢 Activate product",
+          callback_data: `adm:active:${id}`,
+        },
+      ],
+      [
+        {
+          text: product.is_featured ? "☆ Remove featured" : "⭐ Make featured",
+          callback_data: `adm:featured:${id}`,
+        },
+      ],
+      [{ text: "🖼 Set image URL", callback_data: `adm:image:prod:${id}` }],
+      [{ text: "⬅️ Products", callback_data: "adm:products" }],
+    ],
+  };
 }
 
 function settingsText(settings: StoreSettings): string {
@@ -180,11 +253,142 @@ export async function handleAdminCallback(
       await editMessage(chatId, messageId, view.text, view.markup);
       return true;
     }
-    case "products":
-      await editMessage(chatId, messageId, await productList(), [
-        [{ text: "➕ Add product", callback_data: "adm:addproduct" }],
-        [{ text: "🔑 Add keys", callback_data: "adm:addkeys" }],
-        [{ text: "⬅️ Admin", callback_data: "adm" }],
+    case "products": {
+      const view = await productList();
+      await editMessage(chatId, messageId, view.text, view.markup);
+      return true;
+    }
+    case "product": {
+      const view = await productDetail(Number(parts[2]));
+      await editMessage(chatId, messageId, view.text, view.markup);
+      return true;
+    }
+    case "categories": {
+      const [{ data: categories }, { data: subcategories }] = await Promise.all([
+        db.from("categories").select("id, name, image_url").order("sort_order").order("name"),
+        db.from("subcategories").select("id, name, category_id, image_url").order("name"),
+      ]);
+      const categoryRows = (categories ?? []) as {
+        id: number;
+        name: string;
+        image_url: string | null;
+      }[];
+      const subRows = (subcategories ?? []) as {
+        id: number;
+        name: string;
+        category_id: number | null;
+        image_url: string | null;
+      }[];
+      const markup: InlineKeyboard = categoryRows.flatMap((category) => [
+        [
+          {
+            text: `📂 ${category.name}`.slice(0, 60),
+            callback_data: `adm:category:${category.id}`,
+          },
+        ],
+        ...subRows
+          .filter((sub) => sub.category_id === category.id)
+          .map((sub) => [
+            { text: `  📁 ${sub.name}`.slice(0, 60), callback_data: `adm:subcategory:${sub.id}` },
+          ]),
+      ]);
+      markup.push([{ text: "⬅️ Admin", callback_data: "adm" }]);
+      await editMessage(
+        chatId,
+        messageId,
+        "🗂 <b>Categories</b>\n\nChoose a category or subcategory.",
+        markup,
+      );
+      return true;
+    }
+    case "category":
+    case "subcategory": {
+      const table = action === "category" ? "categories" : "subcategories";
+      const { data: item } = await db
+        .from(table)
+        .select("id, name, description, image_url")
+        .eq("id", Number(parts[2]))
+        .maybeSingle();
+      if (!item) return false;
+      await editMessage(
+        chatId,
+        messageId,
+        `${action === "category" ? "📂" : "📁"} <b>${escapeHtml(item.name)}</b>\n\n${escapeHtml(item.description ?? "No description.")}\nImage: <code>${escapeHtml(item.image_url ?? "not set")}</code>`,
+        [
+          [
+            {
+              text: "🖼 Set image URL",
+              callback_data: `adm:image:${action === "category" ? "cat" : "sub"}:${item.id}`,
+            },
+          ],
+          [{ text: "⬅️ Categories", callback_data: "adm:categories" }],
+        ],
+      );
+      return true;
+    }
+    case "active":
+    case "featured": {
+      const id = Number(parts[2]);
+      const column = action === "active" ? "is_active" : "is_featured";
+      const { data: current } = await db.from("products").select(column).eq("id", id).maybeSingle();
+      if (!current) return false;
+      const currentValue = (current as Record<string, unknown>)[column];
+      await db
+        .from("products")
+        .update({ [column]: !Boolean(currentValue) })
+        .eq("id", id);
+      const view = await productDetail(id);
+      await editMessage(chatId, messageId, view.text, view.markup);
+      return true;
+    }
+    case "promo": {
+      const { sendDailyPromo } = await import("./bot.server");
+      const result = await sendDailyPromo();
+      await answerCallback(callbackId, `Promo sent to ${result.sent} subscribers`, true);
+      await showAdminMenu(chatId, messageId);
+      return true;
+    }
+    case "templates": {
+      const { data: templates } = await db
+        .from("message_templates")
+        .select("id, title, category, body")
+        .order("category")
+        .order("title");
+      const rows: InlineKeyboard = (templates ?? []).map((template) => [
+        {
+          text: `${template.category}: ${template.title}`.slice(0, 60),
+          callback_data: `adm:template:${template.id}`,
+        },
+      ]);
+      rows.push([{ text: "⬅️ Admin", callback_data: "adm" }]);
+      await editMessage(
+        chatId,
+        messageId,
+        "📝 <b>Message templates</b>\n\nChoose one to use as a broadcast.",
+        rows,
+      );
+      return true;
+    }
+    case "template": {
+      const { data: template } = await db
+        .from("message_templates")
+        .select("body, title")
+        .eq("id", Number(parts[2]))
+        .maybeSingle();
+      if (!template) return false;
+      await setState(chatId, "adm_broadcast", { text: template.body, title: template.title });
+      await editMessage(
+        chatId,
+        messageId,
+        `📣 Template <b>${escapeHtml(template.title)}</b> loaded. Send it now or edit the text by sending a new message.`,
+        [[{ text: "Cancel", callback_data: "adm" }]],
+      );
+      return true;
+    }
+    case "image":
+      await setState(chatId, "adm_image", { scope: parts[2], id: Number(parts[3]) });
+      await editMessage(chatId, messageId, "🖼 Send the public image URL.", [
+        [{ text: "Cancel", callback_data: "adm:products" }],
       ]);
       return true;
     case "addcat":
@@ -492,6 +696,27 @@ export async function handleAdminState(
     await sendMessage(
       chatId,
       `🔑 Added ${lines.length} keys. Product #${productId} stock is now ${count ?? 0}.`,
+      adminMenu,
+    );
+    return true;
+  }
+
+  if (state.name === "adm_image") {
+    const scope = String(state.data["scope"] ?? "");
+    const id = Number(state.data["id"]);
+    const table = scope === "prod" ? "products" : scope === "cat" ? "categories" : "subcategories";
+    if (!table || !id || !/^https?:\/\//i.test(text.trim())) {
+      await sendMessage(chatId, "❌ Send a valid http(s) image URL.");
+      return true;
+    }
+    const { error } = await db
+      .from(table)
+      .update({ image_url: text.trim().slice(0, 1000) })
+      .eq("id", id);
+    await setState(chatId, null);
+    await sendMessage(
+      chatId,
+      error ? `❌ ${escapeHtml(error.message)}` : "🖼 Image updated.",
       adminMenu,
     );
     return true;

@@ -404,6 +404,7 @@ export const saveCategory = createServerFn({ method: "POST" })
                 name,
                 description: input.description?.trim().slice(0, 500) || null,
                 category_id: input.categoryId,
+                image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               }
             : {
                 name,
