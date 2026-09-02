@@ -265,6 +265,33 @@ export type Database = {
         }
         Relationships: []
       }
+      message_templates: {
+        Row: {
+          body: string
+          category: string
+          created_at: string
+          id: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          category?: string
+          created_at?: string
+          id?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          category?: string
+          created_at?: string
+          id?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -317,6 +344,9 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
+          delivered_at: string | null
+          delivery_error: string | null
+          delivery_status: string
           dispute_status: Database["public"]["Enums"]["dispute_status"]
           id: number
           status: Database["public"]["Enums"]["order_status"]
@@ -326,6 +356,9 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string
+          delivered_at?: string | null
+          delivery_error?: string | null
+          delivery_status?: string
           dispute_status?: Database["public"]["Enums"]["dispute_status"]
           id?: number
           status?: Database["public"]["Enums"]["order_status"]
@@ -335,6 +368,9 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string
+          delivered_at?: string | null
+          delivery_error?: string | null
+          delivery_status?: string
           dispute_status?: Database["public"]["Enums"]["dispute_status"]
           id?: number
           status?: Database["public"]["Enums"]["order_status"]
@@ -405,6 +441,7 @@ export type Database = {
           id: number
           image_url: string | null
           is_active: boolean
+          is_featured: boolean
           name: string
           price: number
           product_type: Database["public"]["Enums"]["product_type"]
@@ -420,6 +457,7 @@ export type Database = {
           id?: number
           image_url?: string | null
           is_active?: boolean
+          is_featured?: boolean
           name: string
           price: number
           product_type?: Database["public"]["Enums"]["product_type"]
@@ -435,6 +473,7 @@ export type Database = {
           id?: number
           image_url?: string | null
           is_active?: boolean
+          is_featured?: boolean
           name?: string
           price?: number
           product_type?: Database["public"]["Enums"]["product_type"]
