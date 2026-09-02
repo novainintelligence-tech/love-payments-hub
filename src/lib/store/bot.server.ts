@@ -48,6 +48,7 @@ import {
   escapeHtml,
   sendCard,
   sendMessage,
+  type InlineButton,
   type InlineKeyboard,
 } from "./telegram.server";
 import { isPlausibleHash } from "./verify.server";
@@ -116,13 +117,22 @@ async function showTopUpAssets(chatId: number, messageId?: number) {
   return sendMessage(chatId, text, markup);
 }
 
-function productButton(p: Product) {
-  return [
-    {
-      text: `${p.image_url ? "🖼 " : ""}${p.name} — $${Number(p.price).toFixed(2)}`,
-      callback_data: `prod:${p.id}`,
-    },
-  ];
+function productButton(p: Product): InlineButton {
+  return {
+    text: `${p.is_featured ? "⭐🔥 " : p.image_url ? "🖼 " : ""}${p.name} — $${Number(p.price).toFixed(2)}`.slice(
+      0,
+      60,
+    ),
+    callback_data: `prod:${p.id}`,
+  };
+}
+
+function gridRows(buttons: InlineButton[]): InlineKeyboard {
+  const rows: InlineKeyboard = [];
+  for (let index = 0; index < buttons.length; index += 2) {
+    rows.push(buttons.slice(index, index + 2));
+  }
+  return rows;
 }
 
 async function showProduct(chatId: number, messageId: number, productId: number) {
@@ -209,7 +219,7 @@ async function sendGallery(
 }
 
 async function showCategories(chatId: number, messageId: number, settings: StoreSettings) {
-  const categories = await listCategories();
+  const [categories, featured] = await Promise.all([listCategories(), listFeaturedProducts(20)]);
   if (categories.length === 0) {
     const products = await listProducts(null);
     if (products.length === 0) {
@@ -222,22 +232,31 @@ async function showCategories(chatId: number, messageId: number, settings: Store
       );
     }
     return editCard(chatId, messageId, settings.banner_image_url, "🛍 <b>All products</b>", [
-      ...products.map(productButton),
+      ...gridRows(products.map(productButton)),
       [{ text: "🖼 Open gallery", callback_data: "gal:all:0" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ]);
   }
+  const categoryButtons = categories.map((category) => ({
+    text: `${category.image_url ? "🖼 " : "📂 "}${category.name}`,
+    callback_data: `cat:${category.id}`,
+  }));
+  const featuredRows = featured.length
+    ? [
+        [{ text: "⭐🔥 FEATURED • HOT PRODUCTS 🔥⭐", callback_data: "featured" }],
+        ...gridRows(featured.map(productButton)),
+      ]
+    : [];
   return editCard(
     chatId,
     messageId,
     settings.banner_image_url,
     ["🛍 <b>Choose a category</b>", "", escapeHtml(settings.store_name)].join("\n"),
     [
-      ...categories.map((c) => [
-        { text: `${c.image_url ? "🖼 " : "📂 "}${c.name}`, callback_data: `cat:${c.id}` },
-      ]),
+      ...featuredRows,
+      ...gridRows(categoryButtons),
       [{ text: "🖼 Browse all products", callback_data: "gal:all:0" }],
-      [{ text: "⭐ Featured products", callback_data: "featured" }],
+      [{ text: "⭐ Open featured gallery", callback_data: "featured" }],
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ],
   );
@@ -247,12 +266,15 @@ async function showCategory(chatId: number, messageId: number, categoryId: numbe
   const category = await getCategory(categoryId);
   if (!category) return showCategoriesFallback(chatId, messageId);
   const subs = await listSubcategories(categoryId);
-  const products = await listProducts(categoryId);
+  const products = (await listProducts(categoryId)).filter((product) => !product.is_featured);
   const rows: InlineKeyboard = [
-    ...subs.map((s) => [
-      { text: `${s.image_url ? "🖼 " : "📁 "}${s.name}`, callback_data: `sub:${s.id}` },
-    ]),
-    ...products.filter((p) => !p.subcategory_id).map(productButton),
+    ...gridRows(
+      subs.map((subcategory) => ({
+        text: `${subcategory.image_url ? "🖼 " : "📁 "}${subcategory.name}`,
+        callback_data: `sub:${subcategory.id}`,
+      })),
+    ),
+    ...gridRows(products.filter((product) => !product.subcategory_id).map(productButton)),
   ];
   if (products.length > 0)
     rows.push([{ text: "🖼 Open category gallery", callback_data: `gal:cat:${categoryId}:0` }]);
@@ -270,8 +292,10 @@ async function showCategory(chatId: number, messageId: number, categoryId: numbe
 async function showSubcategory(chatId: number, messageId: number, subcategoryId: number) {
   const sub = await getSubcategory(subcategoryId);
   if (!sub) return showCategoriesFallback(chatId, messageId);
-  const products = await listProductsBySubcategory(subcategoryId);
-  const rows: InlineKeyboard = [...products.map(productButton)];
+  const products = (await listProductsBySubcategory(subcategoryId)).filter(
+    (product) => !product.is_featured,
+  );
+  const rows: InlineKeyboard = gridRows(products.map(productButton));
   if (products.length > 0)
     rows.push([
       { text: "🖼 Open subcategory gallery", callback_data: `gal:sub:${subcategoryId}:0` },
@@ -601,7 +625,7 @@ async function handleCallback(
       await showCategories(chatId, messageId, settings);
       break;
     case "featured": {
-      const featured = await listFeaturedProducts(10);
+      const featured = await listFeaturedProducts(100);
       await sendGallery(chatId, featured, "shop", "featured");
       break;
     }
@@ -621,10 +645,12 @@ async function handleCallback(
       const page = Number.isInteger(Number(pagePart)) ? Number(pagePart) : 0;
       const products =
         scope === "sub"
-          ? await listProductsBySubcategory(id)
+          ? (await listProductsBySubcategory(id)).filter((product) => !product.is_featured)
           : scope === "featured"
             ? await listFeaturedProducts(100)
-            : await listProducts(scope === "cat" ? id : null);
+            : (await listProducts(scope === "cat" ? id : null)).filter(
+                (product) => scope !== "cat" || !product.is_featured,
+              );
       const back = scope === "sub" ? `sub:${id}` : scope === "cat" ? `cat:${id}` : "shop";
       if (scope !== "all" && scope !== "cat" && scope !== "sub" && scope !== "featured") {
         await answerCallback(callbackId, "Gallery not found", true);
