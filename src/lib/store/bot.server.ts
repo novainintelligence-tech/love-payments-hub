@@ -328,6 +328,11 @@ async function handleText(
 
   if (trimmed.startsWith("/start")) {
     await setState(chatId, null);
+    if (!user.welcome_bonus_granted) {
+      const { runOnboarding } = await import("./onboarding.server");
+      await runOnboarding(chatId, user, settings, mainMenu(admin, settings));
+      return;
+    }
     await sendCard(
       chatId,
       settings.banner_image_url,
