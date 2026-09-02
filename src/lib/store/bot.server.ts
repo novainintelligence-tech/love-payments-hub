@@ -309,22 +309,11 @@ async function doCheckout(chatId: number, user: BotUser) {
       `✅ <b>Order #${result.orderId} completed</b>`,
       `Total: <b>${money(result.total)}</b> · New balance: <b>${money(result.balance)}</b>`,
       "",
-      "Your items:",
-      "",
-      ...result.delivery,
+      "📄 Preparing your delivery files…",
     ].join("\n"),
-    [
-      [{ text: "📦 My orders", callback_data: "orders" }],
-      [{ text: "🏠 Menu", callback_data: "menu" }],
-    ],
   );
-  const settings = await getSettings();
-  if (settings.admin_telegram_id) {
-    await sendMessage(
-      Number(settings.admin_telegram_id),
-      `🧾 New order #${result.orderId} — ${money(result.total)} from @${escapeHtml(user.username ?? String(user.telegram_id))}`,
-    );
-  }
+  const { fulfillOrder } = await import("./fulfillment.server");
+  await fulfillOrder(result.orderId);
 }
 
 async function handleText(
