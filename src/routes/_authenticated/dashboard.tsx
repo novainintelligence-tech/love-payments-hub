@@ -866,6 +866,14 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
   const selectedTemplate = data.templates.find((item: any) => String(item.id) === templateId);
+  const libraryTemplate = data.templates.find(
+    (item: any) => item.title === "E-BANK ENROLL complete Telegram template library",
+  );
+  const librarySections = libraryTemplate
+    ? libraryTemplate.body
+        .split(/\n(?=\d+\. )/)
+        .filter((section: string) => /^\d+\. /.test(section))
+    : [];
   return (
     <Section
       title="Broadcasts"
@@ -965,6 +973,48 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
           <p className="text-xs text-muted-foreground">Selected: {selectedTemplate.title}</p>
         ) : null}
       </div>
+      {librarySections.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          <h3 className="font-semibold">Individual library messages</h3>
+          {librarySections.map((section: string) => {
+            const title = section.split("\n", 1)[0] ?? "Broadcast template";
+            return (
+              <article className="panel flex flex-col gap-3 p-4" key={title}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">{title}</p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(section);
+                        toast.success("Message copied to clipboard.");
+                      }}
+                    >
+                      <Copy className="size-4" /> Copy
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={busy || section.length > 3000}
+                      onClick={() =>
+                        run(async () => {
+                          const result = await broadcast({ data: { text: section } });
+                          return `Message delivered to ${result.sent} customers.`;
+                        })
+                      }
+                    >
+                      Send to all users
+                    </Button>
+                  </div>
+                </div>
+                <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm text-muted-foreground">
+                  {section}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-2">
         {data.broadcasts.map((item: any) => (
           <div className="panel flex justify-between gap-3 p-3" key={item.id}>
