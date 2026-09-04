@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Star, Trash2, CopyPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
@@ -12,12 +12,16 @@ import {
   broadcastMessage,
   bulkUpdateProducts,
   claimAdmin,
+  deleteProduct,
+  deleteTemplate,
+  duplicateProduct,
   inviteTelegramUser,
   resolveDispute,
   reviewPayment,
   saveCategory,
   saveProduct,
   saveSettings,
+  saveTemplate,
   updateCustomers,
 } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
@@ -294,7 +298,9 @@ function Payments({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
 function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Run }) {
   const save = useServerFn(saveProduct),
     bulk = useServerFn(bulkUpdateProducts),
-    addKeys = useServerFn(addProductKeys);
+    addKeys = useServerFn(addProductKeys),
+    remove = useServerFn(deleteProduct),
+    duplicate = useServerFn(duplicateProduct);
   const [selected, setSelected] = useState<number[]>([]),
     [bulkAction, setBulkAction] = useState("activate"),
     [bulkValue, setBulkValue] = useState("");
@@ -362,6 +368,10 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
             toggle={() => toggle(product.id)}
             busy={busy}
             save={(payload: any) => run(async () => (await save({ data: payload })).message)}
+            remove={() => run(async () => (await remove({ data: { id: product.id } })).message)}
+            duplicate={() =>
+              run(async () => (await duplicate({ data: { id: product.id } })).message)
+            }
             add={(keys: any) =>
               run(async () => {
                 const result = await addKeys({ data: { productId: product.id, keys } });
@@ -474,7 +484,18 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
   );
 }
 
-function ProductRow({ product, categories, subcategories, checked, toggle, busy, save, add }: any) {
+function ProductRow({
+  product,
+  categories,
+  subcategories,
+  checked,
+  toggle,
+  busy,
+  save,
+  remove,
+  duplicate,
+  add,
+}: any) {
   const [editing, setEditing] = useState(false),
     [keys, setKeys] = useState("");
   return (
@@ -484,7 +505,7 @@ function ProductRow({ product, categories, subcategories, checked, toggle, busy,
           <input type="checkbox" checked={checked} onChange={toggle} />
           <span className="font-medium">{product.name}</span>
         </label>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant={product.is_active ? "default" : "secondary"}>
             {product.is_active ? "active" : "hidden"}
           </Badge>
@@ -494,6 +515,46 @@ function ProductRow({ product, categories, subcategories, checked, toggle, busy,
           </Badge>
           <Button size="sm" variant="outline" onClick={() => setEditing(!editing)}>
             {editing ? "Close" : "Edit"}
+          </Button>
+          <Button
+            size="sm"
+            variant={product.is_featured ? "default" : "outline"}
+            disabled={busy}
+            title={product.is_featured ? "Remove featured status" : "Feature product"}
+            onClick={() =>
+              save({
+                ...product,
+                id: product.id,
+                productType: product.product_type,
+                categoryId: product.category_id,
+                subcategoryId: product.subcategory_id,
+                imageUrl: product.image_url,
+                downloadLink: product.download_link,
+                isActive: product.is_active,
+                isFeatured: !product.is_featured,
+                price: Number(product.price),
+              })
+            }
+          >
+            <Star className="size-4" /> {product.is_featured ? "Featured" : "Feature"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            title="Duplicate product"
+            onClick={duplicate}
+          >
+            <CopyPlus className="size-4" /> Duplicate
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={busy}
+            title="Delete product"
+            onClick={remove}
+          >
+            <Trash2 className="size-4" /> Delete
           </Button>
         </div>
       </div>
@@ -863,8 +924,11 @@ function DisputeRow({ item, busy, submit }: any) {
 
 function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: Run }) {
   const broadcast = useServerFn(broadcastMessage);
+  const save = useServerFn(saveTemplate);
+  const remove = useServerFn(deleteTemplate);
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [templateForm, setTemplateForm] = useState({ id: null as number | null, title: "", category: "custom", body: "" });
   const selectedTemplate = data.templates.find((item: any) => String(item.id) === templateId);
   const libraryTemplate = data.templates.find(
     (item: any) => item.title === "E-BANK ENROLL complete Telegram template library",
@@ -945,6 +1009,13 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => setTemplateForm({ id: template.id, title: template.title, category: template.category, body: template.body })}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={async () => {
                     await navigator.clipboard.writeText(template.body);
                     toast.success("Template copied to clipboard.");
@@ -961,6 +1032,15 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
                 >
                   <Check className="size-4" /> Use in composer
                 </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  title="Delete template"
+                  onClick={() => run(async () => (await remove({ data: { id: template.id } })).message)}
+                >
+                  <Trash2 className="size-4" /> Delete
+                </Button>
               </div>
             </div>
             <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm text-muted-foreground">
@@ -972,6 +1052,30 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
         {selectedTemplate ? (
           <p className="text-xs text-muted-foreground">Selected: {selectedTemplate.title}</p>
         ) : null}
+      </div>
+      <div className="panel flex flex-col gap-3 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-semibold">Template editor</h3>
+          {templateForm.id ? <Badge variant="secondary">Editing template</Badge> : null}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input placeholder="Template title" value={templateForm.title} onChange={(e) => setTemplateForm((old) => ({ ...old, title: e.target.value }))} />
+          <Input placeholder="Category" value={templateForm.category} onChange={(e) => setTemplateForm((old) => ({ ...old, category: e.target.value }))} />
+        </div>
+        <Textarea rows={8} maxLength={3000} placeholder="Template message" value={templateForm.body} onChange={(e) => setTemplateForm((old) => ({ ...old, body: e.target.value }))} />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={busy || templateForm.title.trim().length < 2 || templateForm.body.trim().length < 2}
+            onClick={() => run(async () => {
+              const result = await save({ data: templateForm });
+              setTemplateForm({ id: null, title: "", category: "custom", body: "" });
+              return result.message;
+            })}
+          >
+            {templateForm.id ? "Save template" : "Create template"}
+          </Button>
+          {templateForm.id ? <Button variant="outline" onClick={() => setTemplateForm({ id: null, title: "", category: "custom", body: "" })}>Cancel</Button> : null}
+        </div>
       </div>
       {librarySections.length > 0 ? (
         <div className="flex flex-col gap-3">
@@ -1085,6 +1189,14 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
           value={form.support_username ?? ""}
           onChange={(e) => set("support_username", e.target.value)}
         />
+        <Input
+          placeholder="Channel username or https://t.me/channel"
+          value={form.channel_username ?? ""}
+          onChange={(e) => set("channel_username", e.target.value)}
+        />
+        <p className="text-sm text-muted-foreground md:col-span-2">
+          New users receive a join invitation and must join this channel before the $3 welcome bonus is deposited.
+        </p>
         <Textarea
           className="md:col-span-2"
           placeholder="Welcome message"
@@ -1143,6 +1255,7 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
                       storeName: String(form.store_name ?? ""),
                       welcomeMessage: String(form.welcome_message ?? ""),
                       supportUsername: String(form.support_username ?? ""),
+                      channelUsername: String(form.channel_username ?? ""),
                       miniAppUrl: String(form.mini_app_url ?? ""),
                       bannerImageUrl: String(form.banner_image_url ?? ""),
                       btcAddress: String(form.btc_address ?? ""),

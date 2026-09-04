@@ -1,6 +1,19 @@
 /** New-user onboarding: animated welcome, signup bonus and admin alerts. */
-import { adjustBalance, getDb, money, notifyAdmin, type BotUser, type StoreSettings } from "./db.server";
-import { escapeHtml, sendMessage, editMessage, type InlineKeyboard } from "./telegram.server";
+import {
+  adjustBalance,
+  getDb,
+  money,
+  notifyAdmin,
+  type BotUser,
+  type StoreSettings,
+} from "./db.server";
+import {
+  escapeHtml,
+  getChatMember,
+  sendMessage,
+  editMessage,
+  type InlineKeyboard,
+} from "./telegram.server";
 
 export const SIGNUP_BONUS_USD = 3;
 
@@ -77,6 +90,29 @@ export async function runOnboarding(
   menu: InlineKeyboard,
 ): Promise<void> {
   const db = await getDb();
+  if (settings.channel_username) {
+    const channel = settings.channel_username.replace(/^@/, "");
+    const membership = await getChatMember(`@${channel}`, user.telegram_id);
+    const joined = Boolean(
+      (membership && ["creator", "administrator", "member"].includes(membership.status)) ||
+      (membership?.status === "restricted" && membership.is_member),
+    );
+    if (!joined) {
+      await sendMessage(
+        chatId,
+        [
+          "👋 Welcome! Join our channel to unlock your $3 welcome bonus.",
+          "",
+          "After joining, tap <b>I joined the channel</b> and we will verify your membership before crediting your wallet.",
+        ].join("\n"),
+        [
+          [{ text: "📣 Join our channel", url: `https://t.me/${channel}` }],
+          [{ text: "✅ I joined the channel", callback_data: "channel:check" }],
+        ],
+      );
+      return;
+    }
+  }
   const { data: claimed } = await db
     .from("bot_users")
     .update({ welcome_bonus_granted: true })

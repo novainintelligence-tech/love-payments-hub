@@ -633,6 +633,12 @@ async function handleCallback(
   }
 
   switch (root) {
+    case "channel":
+      if (parts[1] === "check") {
+        const { runOnboarding } = await import("./onboarding.server");
+        await runOnboarding(chatId, user, settings, mainMenu(admin, settings));
+      }
+      break;
     case "menu":
       await setState(chatId, null);
       await editCard(

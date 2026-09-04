@@ -84,6 +84,14 @@ export async function answerCallback(id: string, text?: string, alert = false) {
   });
 }
 
+export async function getChatMember(chatId: string | number, userId: number) {
+  const result = await tgSafe("getChatMember", { chat_id: chatId, user_id: userId });
+  return result as {
+    status: "creator" | "administrator" | "member" | "restricted" | "left" | "kicked";
+    is_member?: boolean;
+  } | null;
+}
+
 export function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -196,7 +204,12 @@ export async function sendDocumentUrl(
   return tgSafe("sendDocument", {
     chat_id: chatId,
     document: documentUrl,
-    ...(caption ? { caption: caption.length > 1000 ? `${caption.slice(0, 997)}…` : caption, parse_mode: "HTML" } : {}),
+    ...(caption
+      ? {
+          caption: caption.length > 1000 ? `${caption.slice(0, 997)}…` : caption,
+          parse_mode: "HTML",
+        }
+      : {}),
     ...(markup ? { reply_markup: keyboard(markup) } : {}),
   });
 }
