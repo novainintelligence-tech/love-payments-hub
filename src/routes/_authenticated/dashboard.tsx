@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- server function payloads are runtime-validated. */
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -928,7 +929,12 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
   const remove = useServerFn(deleteTemplate);
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
-  const [templateForm, setTemplateForm] = useState({ id: null as number | null, title: "", category: "custom", body: "" });
+  const [templateForm, setTemplateForm] = useState({
+    id: null as number | null,
+    title: "",
+    category: "custom",
+    body: "",
+  });
   const selectedTemplate = data.templates.find((item: any) => String(item.id) === templateId);
   const libraryTemplate = data.templates.find(
     (item: any) => item.title === "E-BANK ENROLL complete Telegram template library",
@@ -1009,7 +1015,14 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setTemplateForm({ id: template.id, title: template.title, category: template.category, body: template.body })}
+                  onClick={() =>
+                    setTemplateForm({
+                      id: template.id,
+                      title: template.title,
+                      category: template.category,
+                      body: template.body,
+                    })
+                  }
                 >
                   Edit
                 </Button>
@@ -1037,7 +1050,9 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
                   variant="destructive"
                   disabled={busy}
                   title="Delete template"
-                  onClick={() => run(async () => (await remove({ data: { id: template.id } })).message)}
+                  onClick={() =>
+                    run(async () => (await remove({ data: { id: template.id } })).message)
+                  }
                 >
                   <Trash2 className="size-4" /> Delete
                 </Button>
@@ -1059,22 +1074,47 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
           {templateForm.id ? <Badge variant="secondary">Editing template</Badge> : null}
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <Input placeholder="Template title" value={templateForm.title} onChange={(e) => setTemplateForm((old) => ({ ...old, title: e.target.value }))} />
-          <Input placeholder="Category" value={templateForm.category} onChange={(e) => setTemplateForm((old) => ({ ...old, category: e.target.value }))} />
+          <Input
+            placeholder="Template title"
+            value={templateForm.title}
+            onChange={(e) => setTemplateForm((old) => ({ ...old, title: e.target.value }))}
+          />
+          <Input
+            placeholder="Category"
+            value={templateForm.category}
+            onChange={(e) => setTemplateForm((old) => ({ ...old, category: e.target.value }))}
+          />
         </div>
-        <Textarea rows={8} maxLength={3000} placeholder="Template message" value={templateForm.body} onChange={(e) => setTemplateForm((old) => ({ ...old, body: e.target.value }))} />
+        <Textarea
+          rows={8}
+          maxLength={3000}
+          placeholder="Template message"
+          value={templateForm.body}
+          onChange={(e) => setTemplateForm((old) => ({ ...old, body: e.target.value }))}
+        />
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={busy || templateForm.title.trim().length < 2 || templateForm.body.trim().length < 2}
-            onClick={() => run(async () => {
-              const result = await save({ data: templateForm });
-              setTemplateForm({ id: null, title: "", category: "custom", body: "" });
-              return result.message;
-            })}
+            disabled={
+              busy || templateForm.title.trim().length < 2 || templateForm.body.trim().length < 2
+            }
+            onClick={() =>
+              run(async () => {
+                const result = await save({ data: templateForm });
+                setTemplateForm({ id: null, title: "", category: "custom", body: "" });
+                return result.message;
+              })
+            }
           >
             {templateForm.id ? "Save template" : "Create template"}
           </Button>
-          {templateForm.id ? <Button variant="outline" onClick={() => setTemplateForm({ id: null, title: "", category: "custom", body: "" })}>Cancel</Button> : null}
+          {templateForm.id ? (
+            <Button
+              variant="outline"
+              onClick={() => setTemplateForm({ id: null, title: "", category: "custom", body: "" })}
+            >
+              Cancel
+            </Button>
+          ) : null}
         </div>
       </div>
       {librarySections.length > 0 ? (
@@ -1195,7 +1235,8 @@ function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
           onChange={(e) => set("channel_username", e.target.value)}
         />
         <p className="text-sm text-muted-foreground md:col-span-2">
-          New users receive a join invitation and must join this channel before the $3 welcome bonus is deposited.
+          New users receive a join invitation and must join this channel before the $3 welcome bonus
+          is deposited.
         </p>
         <Textarea
           className="md:col-span-2"

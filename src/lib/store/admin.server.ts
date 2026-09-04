@@ -335,7 +335,7 @@ export async function handleAdminCallback(
       const currentValue = (current as Record<string, unknown>)[column];
       await db
         .from("products")
-        .update({ [column]: !Boolean(currentValue) })
+        .update({ [column]: !currentValue })
         .eq("id", id);
       const view = await productDetail(id);
       await editMessage(chatId, messageId, view.text, view.markup);
