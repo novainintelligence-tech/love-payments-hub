@@ -164,7 +164,9 @@ export const adminDashboardData = createServerFn({ method: "GET" })
 export const reviewPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { id: number; action: "approve" | "reject" | "recheck" }) => {
-    if (!Number.isInteger(input.id) || input.id <= 0) throw new Error("Invalid invoice");
+    const invoiceId = toId(input.id);
+    if (!invoiceId) throw new Error("Invalid invoice");
+    input = { ...input, id: invoiceId };
     if (!["approve", "reject", "recheck"].includes(input.action)) throw new Error("Invalid action");
     return input;
   })
@@ -216,7 +218,9 @@ export const reviewPayment = createServerFn({ method: "POST" })
 export const adjustCustomerBalance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { userId: number; amount: number; reason: string }) => {
-    if (!Number.isInteger(input.userId)) throw new Error("Invalid customer");
+    const customerId = toId(input.userId);
+    if (!customerId) throw new Error("Invalid customer");
+    input = { ...input, userId: customerId, amount: Number(input.amount) };
     if (!Number.isFinite(input.amount) || input.amount === 0)
       throw new Error("Amount must be a non-zero number");
     return { ...input, reason: (input.reason || "Admin adjustment").slice(0, 200) };
@@ -244,7 +248,9 @@ export const adjustCustomerBalance = createServerFn({ method: "POST" })
 export const updateCustomers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { ids: number[]; isBanned: boolean }) => {
-    const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+    const ids = [...new Set((input.ids ?? []).map(toId))]
+      .filter((id): id is number => id !== null)
+      .slice(0, 250);
     if (ids.length === 0) throw new Error("Select at least one customer");
     return { ids, isBanned: Boolean(input.isBanned) };
   })
@@ -285,13 +291,14 @@ export const broadcastMessage = createServerFn({ method: "POST" })
 export const addProductKeys = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { productId: number; keys: string }) => {
-    if (!Number.isInteger(input.productId)) throw new Error("Invalid product");
+    const keyProductId = toId(input.productId);
+    if (!keyProductId) throw new Error("Invalid product");
     const keys = (input.keys ?? "")
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
     if (keys.length === 0) throw new Error("Add at least one key");
-    return { productId: input.productId, keys };
+    return { productId: keyProductId, keys };
   })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -591,8 +598,9 @@ export const resolveDispute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { id: number; resolution: string }) => {
     const resolution = input.resolution.trim().slice(0, 1000);
-    if (!Number.isInteger(input.id) || resolution.length < 2) throw new Error("Enter a resolution");
-    return { id: input.id, resolution };
+    const disputeId = toId(input.id);
+    if (!disputeId || resolution.length < 2) throw new Error("Enter a resolution");
+    return { id: disputeId, resolution };
   })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -631,24 +639,26 @@ export const saveSettings = createServerFn({ method: "POST" })
       storeName: string;
       welcomeMessage: string;
       supportUsername?: string;
+      channelUsername?: string;
       miniAppUrl?: string;
       bannerImageUrl?: string;
       btcAddress?: string;
       usdtTrc20Address?: string;
       usdcErc20Address?: string;
-      paymentExpiryMinutes?: number;
-      amountTolerancePercent?: number;
+      paymentExpiryMinutes?: number | string;
+      amountTolerancePercent?: number | string;
     }) => ({
       store_name: input.storeName.trim().slice(0, 100),
       welcome_message: input.welcomeMessage.trim().slice(0, 2000),
       support_username: input.supportUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
+      channel_username: input.channelUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
       mini_app_url: input.miniAppUrl?.trim().slice(0, 1000) || null,
       banner_image_url: input.bannerImageUrl?.trim().slice(0, 1000) || null,
       btc_address: input.btcAddress?.trim().slice(0, 200) || null,
       usdt_trc20_address: input.usdtTrc20Address?.trim().slice(0, 200) || null,
       usdc_erc20_address: input.usdcErc20Address?.trim().slice(0, 200) || null,
-      payment_expiry_minutes: Math.min(1440, Math.max(5, input.paymentExpiryMinutes ?? 30)),
-      amount_tolerance_percent: Math.min(20, Math.max(0, input.amountTolerancePercent ?? 2)),
+      payment_expiry_minutes: Math.min(1440, Math.max(5, toNumber(input.paymentExpiryMinutes) ?? 30)),
+      amount_tolerance_percent: Math.min(20, Math.max(0, toNumber(input.amountTolerancePercent) ?? 2)),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -664,8 +674,8 @@ export const inviteTelegramUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: { telegramId: string; firstName?: string; username?: string; note?: string }) => {
-      const telegramId = Number(String(input.telegramId ?? "").trim());
-      if (!Number.isInteger(telegramId) || telegramId <= 0)
+      const telegramId = toId(String(input.telegramId ?? "").trim());
+      if (!telegramId)
         throw new Error("Enter a valid numeric Telegram ID");
       return {
         telegramId,
@@ -732,7 +742,8 @@ export const updateProduct = createServerFn({ method: "POST" })
       description?: string;
       isActive?: boolean;
     }) => {
-      if (!Number.isInteger(input.id)) throw new Error("Invalid product");
+      const productId = toId(input.id);
+      if (!productId) throw new Error("Invalid product");
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) {
         const name = input.name.trim();
@@ -748,7 +759,7 @@ export const updateProduct = createServerFn({ method: "POST" })
         patch["description"] = input.description.trim().slice(0, 1000) || null;
       if (input.isActive !== undefined) patch["is_active"] = input.isActive;
       if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
-      return { id: input.id, patch };
+      return { id: productId, patch };
     },
   )
   .handler(async ({ data, context }) => {
@@ -770,7 +781,8 @@ export const renameCategory = createServerFn({ method: "POST" })
       name?: string;
       description?: string;
     }) => {
-      if (!Number.isInteger(input.id)) throw new Error("Invalid category");
+      const catId = toId(input.id);
+      if (!catId) throw new Error("Invalid category");
       if (input.kind !== "category" && input.kind !== "subcategory")
         throw new Error("Invalid kind");
       const patch: Record<string, unknown> = {};
@@ -782,7 +794,7 @@ export const renameCategory = createServerFn({ method: "POST" })
       if (input.description !== undefined)
         patch["description"] = input.description.trim().slice(0, 500) || null;
       if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
-      return { id: input.id, kind: input.kind, patch };
+      return { id: catId, kind: input.kind, patch };
     },
   )
   .handler(async ({ data, context }) => {
