@@ -302,32 +302,31 @@ export const saveProduct = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      id?: number | null;
+      id?: number | string | null;
       name: string;
-      price: number;
+      price: number | string;
       description?: string;
       productType: "key" | "file";
-      categoryId?: number | null;
-      subcategoryId?: number | null;
+      categoryId?: number | string | null;
+      subcategoryId?: number | string | null;
       imageUrl?: string;
       downloadLink?: string;
       isActive?: boolean;
       isFeatured?: boolean;
     }) => {
-      const name = input.name.trim().slice(0, 120);
-      if (name.length < 2 || !Number.isFinite(input.price) || input.price < 0)
+      const name = (input.name ?? "").trim().slice(0, 120);
+      const price = toNumber(input.price);
+      if (name.length < 2 || price === null || price < 0)
         throw new Error("Check product name and price");
-      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
-        throw new Error("Invalid product");
       return {
-        id: input.id ?? null,
+        id: toId(input.id),
         patch: {
           name,
-          price: Number(input.price.toFixed(2)),
-          description: input.description?.trim().slice(0, 1000) || null,
-          product_type: input.productType,
-          category_id: input.categoryId ?? null,
-          subcategory_id: input.subcategoryId ?? null,
+          price: Number(price.toFixed(2)),
+          description: input.description?.trim().slice(0, 4000) || null,
+          product_type: input.productType === "key" ? "key" : "file",
+          category_id: toId(input.categoryId),
+          subcategory_id: toId(input.subcategoryId),
           image_url: input.imageUrl?.trim().slice(0, 1000) || null,
           download_link: input.downloadLink?.trim().slice(0, 1000) || null,
           is_active: input.isActive ?? true,
@@ -346,19 +345,97 @@ export const saveProduct = createServerFn({ method: "POST" })
     return { message: data.id ? "Product updated." : "Product created." };
   });
 
+/** Deletes a product (and any unsold inventory keys attached to it). */
+export const deleteProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("cart_items").delete().eq("product_id", data.id);
+    await supabaseAdmin.from("product_keys").delete().eq("product_id", data.id).eq("is_sold", false);
+    const { error } = await supabaseAdmin.from("products").delete().eq("id", data.id);
+    if (error)
+      throw new Error(
+        /foreign key/i.test(error.message)
+          ? "This product has sold history, so it cannot be deleted. Hide it instead."
+          : error.message,
+      );
+    return { message: "Product deleted." };
+  });
+
+/** Copies a product into a new draft row. */
+export const duplicateProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("products")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (error || !row) throw new Error(error?.message ?? "Product not found");
+    const {
+      id: _id,
+      created_at: _c,
+      updated_at: _u,
+      stock_count: _s,
+      ...rest
+    } = row as Record<string, unknown>;
+    const { error: insertError } = await supabaseAdmin
+      .from("products")
+      .insert({ ...rest, name: `${String(rest["name"])} (copy)`, is_active: false, stock_count: 0 });
+    if (insertError) throw new Error(insertError.message);
+    return { message: "Product duplicated as a hidden draft." };
+  });
+
+/** Removes every unsold inventory key from a product. */
+export const clearProductKeys = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { productId: number | string }) => {
+    const id = toId(input.productId);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("product_keys")
+      .delete()
+      .eq("product_id", data.id)
+      .eq("is_sold", false);
+    if (error) throw new Error(error.message);
+    await supabaseAdmin.from("products").update({ stock_count: 0 }).eq("id", data.id);
+    return { message: "Unsold inventory cleared." };
+  });
+
 export const bulkUpdateProducts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      ids: number[];
-      action: "activate" | "deactivate" | "price" | "category";
-      value?: number;
+      ids: (number | string)[];
+      action: "activate" | "deactivate" | "price" | "category" | "feature" | "unfeature";
+      value?: number | string;
     }) => {
-      const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+      const ids = [...new Set((input.ids ?? []).map(toId))].filter(
+        (id): id is number => id !== null,
+      );
       if (ids.length === 0) throw new Error("Select at least one product");
-      if (["price", "category"].includes(input.action) && !Number.isFinite(input.value))
+      const value = toNumber(input.value);
+      if (["price", "category"].includes(input.action) && value === null)
         throw new Error("Enter a valid value");
-      return { ...input, ids };
+      return { action: input.action, ids, value };
     },
   )
   .handler(async ({ data, context }) => {
@@ -369,9 +446,13 @@ export const bulkUpdateProducts = createServerFn({ method: "POST" })
         ? { is_active: true }
         : data.action === "deactivate"
           ? { is_active: false }
-          : data.action === "price"
-            ? { price: Number(Number(data.value).toFixed(2)) }
-            : { category_id: Number(data.value) };
+          : data.action === "feature"
+            ? { is_featured: true }
+            : data.action === "unfeature"
+              ? { is_featured: false }
+              : data.action === "price"
+                ? { price: Number(Number(data.value).toFixed(2)) }
+                : { category_id: Number(data.value) };
     const { error } = await supabaseAdmin.from("products").update(patch).in("id", data.ids);
     if (error) throw new Error(error.message);
     return { message: `${data.ids.length} products updated.` };
@@ -381,35 +462,34 @@ export const saveCategory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      id?: number | null;
+      id?: number | string | null;
       kind: "category" | "subcategory";
       name: string;
       description?: string;
-      categoryId?: number;
-      sortOrder?: number;
+      categoryId?: number | string | null;
+      sortOrder?: number | string;
       imageUrl?: string;
     }) => {
-      const name = input.name.trim().slice(0, 80);
+      const name = (input.name ?? "").trim().slice(0, 80);
       if (name.length < 2) throw new Error("Name is too short");
-      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
-        throw new Error("Invalid category");
-      if (input.kind === "subcategory" && !Number.isInteger(input.categoryId))
-        throw new Error("Choose a parent category");
+      const parentId = toId(input.categoryId);
+      if (input.kind === "subcategory" && !parentId) throw new Error("Choose a parent category");
       return {
-        id: input.id ?? null,
+        id: toId(input.id),
         kind: input.kind,
         patch:
           input.kind === "subcategory"
             ? {
                 name,
-                description: input.description?.trim().slice(0, 500) || null,
-                category_id: input.categoryId,
+                description: input.description?.trim().slice(0, 1000) || null,
+                category_id: parentId,
+                sort_order: toNumber(input.sortOrder) ?? 0,
                 image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               }
             : {
                 name,
-                description: input.description?.trim().slice(0, 500) || null,
-                sort_order: input.sortOrder ?? 0,
+                description: input.description?.trim().slice(0, 1000) || null,
+                sort_order: toNumber(input.sortOrder) ?? 0,
                 image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               },
       };
@@ -426,6 +506,72 @@ export const saveCategory = createServerFn({ method: "POST" })
     if (result.error) throw new Error(result.error.message);
     return { message: `${data.kind === "category" ? "Category" : "Subcategory"} saved.` };
   });
+
+/** Deletes a category or subcategory, detaching any products still attached. */
+export const deleteCategory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string; kind: "category" | "subcategory" }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid category");
+    return { id, kind: input.kind === "subcategory" ? "subcategory" : "category" };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (data.kind === "subcategory") {
+      await supabaseAdmin
+        .from("products")
+        .update({ subcategory_id: null })
+        .eq("subcategory_id", data.id);
+      const { error } = await supabaseAdmin.from("subcategories").delete().eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { message: "Subcategory deleted." };
+    }
+    await supabaseAdmin.from("products").update({ category_id: null }).eq("category_id", data.id);
+    await supabaseAdmin.from("subcategories").delete().eq("category_id", data.id);
+    const { error } = await supabaseAdmin.from("categories").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: "Category deleted." };
+  });
+
+/** Creates or updates a reusable customer message template. */
+export const saveTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id?: number | string | null; title: string; category: string; body: string }) => {
+    const title = (input.title ?? "").trim().slice(0, 120);
+    const body = (input.body ?? "").trim().slice(0, 4000);
+    if (title.length < 2) throw new Error("Give the template a title");
+    if (body.length < 2) throw new Error("Template message is empty");
+    return {
+      id: toId(input.id),
+      patch: { title, category: (input.category || "custom").trim().slice(0, 40), body },
+    };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const result = data.id
+      ? await supabaseAdmin.from("message_templates").update(data.patch).eq("id", data.id)
+      : await supabaseAdmin.from("message_templates").insert(data.patch);
+    if (result.error) throw new Error(result.error.message);
+    return { message: data.id ? "Template updated." : "Template saved." };
+  });
+
+export const deleteTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid template");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("message_templates").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: "Template deleted." };
+  });
+
 
 export const resolveDispute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
