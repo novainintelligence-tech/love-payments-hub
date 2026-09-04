@@ -360,8 +360,11 @@ export const saveProduct = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const result = data.id
-      ? await supabaseAdmin.from("products").update(data.patch).eq("id", data.id)
-      : await supabaseAdmin.from("products").insert(data.patch);
+      ? await supabaseAdmin
+          .from("products")
+          .update(data.patch as never)
+          .eq("id", data.id)
+      : await supabaseAdmin.from("products").insert(data.patch as never);
     if (result.error) throw new Error(result.error.message);
     return { message: data.id ? "Product updated." : "Product created." };
   });
@@ -378,7 +381,11 @@ export const deleteProduct = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("cart_items").delete().eq("product_id", data.id);
-    await supabaseAdmin.from("product_keys").delete().eq("product_id", data.id).eq("is_sold", false);
+    await supabaseAdmin
+      .from("product_keys")
+      .delete()
+      .eq("product_id", data.id)
+      .eq("is_sold", false);
     const { error } = await supabaseAdmin.from("products").delete().eq("id", data.id);
     if (error)
       throw new Error(
@@ -413,9 +420,14 @@ export const duplicateProduct = createServerFn({ method: "POST" })
       stock_count: _s,
       ...rest
     } = row as Record<string, unknown>;
-    const { error: insertError } = await supabaseAdmin
-      .from("products")
-      .insert({ ...rest, name: `${String(rest["name"])} (copy)`, is_active: false, stock_count: 0 });
+    const { error: insertError } = await supabaseAdmin.from("products").insert({
+      ...rest,
+      name: `${String(rest["name"])} (copy)`,
+      price: Number(rest["price"] ?? 0),
+      product_type: rest["product_type"] === "key" ? "key" : "file",
+      is_active: false,
+      stock_count: 0,
+    } as never);
     if (insertError) throw new Error(insertError.message);
     return { message: "Product duplicated as a hidden draft." };
   });
@@ -558,16 +570,18 @@ export const deleteCategory = createServerFn({ method: "POST" })
 /** Creates or updates a reusable customer message template. */
 export const saveTemplate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((input: { id?: number | string | null; title: string; category: string; body: string }) => {
-    const title = (input.title ?? "").trim().slice(0, 120);
-    const body = (input.body ?? "").trim().slice(0, 4000);
-    if (title.length < 2) throw new Error("Give the template a title");
-    if (body.length < 2) throw new Error("Template message is empty");
-    return {
-      id: toId(input.id),
-      patch: { title, category: (input.category || "custom").trim().slice(0, 40), body },
-    };
-  })
+  .validator(
+    (input: { id?: number | string | null; title: string; category: string; body: string }) => {
+      const title = (input.title ?? "").trim().slice(0, 120);
+      const body = (input.body ?? "").trim().slice(0, 4000);
+      if (title.length < 2) throw new Error("Give the template a title");
+      if (body.length < 2) throw new Error("Template message is empty");
+      return {
+        id: toId(input.id),
+        patch: { title, category: (input.category || "custom").trim().slice(0, 40), body },
+      };
+    },
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -592,7 +606,6 @@ export const deleteTemplate = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { message: "Template deleted." };
   });
-
 
 export const resolveDispute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -651,14 +664,26 @@ export const saveSettings = createServerFn({ method: "POST" })
       store_name: input.storeName.trim().slice(0, 100),
       welcome_message: input.welcomeMessage.trim().slice(0, 2000),
       support_username: input.supportUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
-      channel_username: input.channelUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
+      channel_username:
+        input.channelUsername
+          ?.trim()
+          .replace(/^https?:\/\/(www\.)?t\.me\//, "")
+          .replace(/^@/, "")
+          .replace(/\/$/, "")
+          .slice(0, 100) || null,
       mini_app_url: input.miniAppUrl?.trim().slice(0, 1000) || null,
       banner_image_url: input.bannerImageUrl?.trim().slice(0, 1000) || null,
       btc_address: input.btcAddress?.trim().slice(0, 200) || null,
       usdt_trc20_address: input.usdtTrc20Address?.trim().slice(0, 200) || null,
       usdc_erc20_address: input.usdcErc20Address?.trim().slice(0, 200) || null,
-      payment_expiry_minutes: Math.min(1440, Math.max(5, toNumber(input.paymentExpiryMinutes) ?? 30)),
-      amount_tolerance_percent: Math.min(20, Math.max(0, toNumber(input.amountTolerancePercent) ?? 2)),
+      payment_expiry_minutes: Math.min(
+        1440,
+        Math.max(5, toNumber(input.paymentExpiryMinutes) ?? 30),
+      ),
+      amount_tolerance_percent: Math.min(
+        20,
+        Math.max(0, toNumber(input.amountTolerancePercent) ?? 2),
+      ),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -675,8 +700,7 @@ export const inviteTelegramUser = createServerFn({ method: "POST" })
   .validator(
     (input: { telegramId: string; firstName?: string; username?: string; note?: string }) => {
       const telegramId = toId(String(input.telegramId ?? "").trim());
-      if (!telegramId)
-        throw new Error("Enter a valid numeric Telegram ID");
+      if (!telegramId) throw new Error("Enter a valid numeric Telegram ID");
       return {
         telegramId,
         firstName: (input.firstName ?? "").trim().slice(0, 60) || null,
