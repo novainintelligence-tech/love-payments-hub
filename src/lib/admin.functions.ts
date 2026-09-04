@@ -3,6 +3,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Transaction } from "./store/payments.server";
 
+/** Coerces a form value into a positive bigint id, or null when it is blank. */
+function toId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** Coerces a form value into a finite number, or null when it is blank/invalid. */
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function assertAdmin(context: { supabase: SupabaseClient; userId: string }) {
   const { data, error } = await context.supabase.rpc("has_role", {
     _user_id: context.userId,
@@ -150,7 +164,9 @@ export const adminDashboardData = createServerFn({ method: "GET" })
 export const reviewPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { id: number; action: "approve" | "reject" | "recheck" }) => {
-    if (!Number.isInteger(input.id) || input.id <= 0) throw new Error("Invalid invoice");
+    const invoiceId = toId(input.id);
+    if (!invoiceId) throw new Error("Invalid invoice");
+    input = { ...input, id: invoiceId };
     if (!["approve", "reject", "recheck"].includes(input.action)) throw new Error("Invalid action");
     return input;
   })
@@ -202,7 +218,9 @@ export const reviewPayment = createServerFn({ method: "POST" })
 export const adjustCustomerBalance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { userId: number; amount: number; reason: string }) => {
-    if (!Number.isInteger(input.userId)) throw new Error("Invalid customer");
+    const customerId = toId(input.userId);
+    if (!customerId) throw new Error("Invalid customer");
+    input = { ...input, userId: customerId, amount: Number(input.amount) };
     if (!Number.isFinite(input.amount) || input.amount === 0)
       throw new Error("Amount must be a non-zero number");
     return { ...input, reason: (input.reason || "Admin adjustment").slice(0, 200) };
@@ -230,7 +248,9 @@ export const adjustCustomerBalance = createServerFn({ method: "POST" })
 export const updateCustomers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { ids: number[]; isBanned: boolean }) => {
-    const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+    const ids = [...new Set((input.ids ?? []).map(toId))]
+      .filter((id): id is number => id !== null)
+      .slice(0, 250);
     if (ids.length === 0) throw new Error("Select at least one customer");
     return { ids, isBanned: Boolean(input.isBanned) };
   })
@@ -271,13 +291,14 @@ export const broadcastMessage = createServerFn({ method: "POST" })
 export const addProductKeys = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { productId: number; keys: string }) => {
-    if (!Number.isInteger(input.productId)) throw new Error("Invalid product");
+    const keyProductId = toId(input.productId);
+    if (!keyProductId) throw new Error("Invalid product");
     const keys = (input.keys ?? "")
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
     if (keys.length === 0) throw new Error("Add at least one key");
-    return { productId: input.productId, keys };
+    return { productId: keyProductId, keys };
   })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -302,32 +323,31 @@ export const saveProduct = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      id?: number | null;
+      id?: number | string | null;
       name: string;
-      price: number;
+      price: number | string;
       description?: string;
       productType: "key" | "file";
-      categoryId?: number | null;
-      subcategoryId?: number | null;
+      categoryId?: number | string | null;
+      subcategoryId?: number | string | null;
       imageUrl?: string;
       downloadLink?: string;
       isActive?: boolean;
       isFeatured?: boolean;
     }) => {
-      const name = input.name.trim().slice(0, 120);
-      if (name.length < 2 || !Number.isFinite(input.price) || input.price < 0)
+      const name = (input.name ?? "").trim().slice(0, 120);
+      const price = toNumber(input.price);
+      if (name.length < 2 || price === null || price < 0)
         throw new Error("Check product name and price");
-      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
-        throw new Error("Invalid product");
       return {
-        id: input.id ?? null,
+        id: toId(input.id),
         patch: {
           name,
-          price: Number(input.price.toFixed(2)),
-          description: input.description?.trim().slice(0, 1000) || null,
-          product_type: input.productType,
-          category_id: input.categoryId ?? null,
-          subcategory_id: input.subcategoryId ?? null,
+          price: Number(price.toFixed(2)),
+          description: input.description?.trim().slice(0, 4000) || null,
+          product_type: input.productType === "key" ? "key" : "file",
+          category_id: toId(input.categoryId),
+          subcategory_id: toId(input.subcategoryId),
           image_url: input.imageUrl?.trim().slice(0, 1000) || null,
           download_link: input.downloadLink?.trim().slice(0, 1000) || null,
           is_active: input.isActive ?? true,
@@ -346,19 +366,97 @@ export const saveProduct = createServerFn({ method: "POST" })
     return { message: data.id ? "Product updated." : "Product created." };
   });
 
+/** Deletes a product (and any unsold inventory keys attached to it). */
+export const deleteProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("cart_items").delete().eq("product_id", data.id);
+    await supabaseAdmin.from("product_keys").delete().eq("product_id", data.id).eq("is_sold", false);
+    const { error } = await supabaseAdmin.from("products").delete().eq("id", data.id);
+    if (error)
+      throw new Error(
+        /foreign key/i.test(error.message)
+          ? "This product has sold history, so it cannot be deleted. Hide it instead."
+          : error.message,
+      );
+    return { message: "Product deleted." };
+  });
+
+/** Copies a product into a new draft row. */
+export const duplicateProduct = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("products")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (error || !row) throw new Error(error?.message ?? "Product not found");
+    const {
+      id: _id,
+      created_at: _c,
+      updated_at: _u,
+      stock_count: _s,
+      ...rest
+    } = row as Record<string, unknown>;
+    const { error: insertError } = await supabaseAdmin
+      .from("products")
+      .insert({ ...rest, name: `${String(rest["name"])} (copy)`, is_active: false, stock_count: 0 });
+    if (insertError) throw new Error(insertError.message);
+    return { message: "Product duplicated as a hidden draft." };
+  });
+
+/** Removes every unsold inventory key from a product. */
+export const clearProductKeys = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { productId: number | string }) => {
+    const id = toId(input.productId);
+    if (!id) throw new Error("Invalid product");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("product_keys")
+      .delete()
+      .eq("product_id", data.id)
+      .eq("is_sold", false);
+    if (error) throw new Error(error.message);
+    await supabaseAdmin.from("products").update({ stock_count: 0 }).eq("id", data.id);
+    return { message: "Unsold inventory cleared." };
+  });
+
 export const bulkUpdateProducts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      ids: number[];
-      action: "activate" | "deactivate" | "price" | "category";
-      value?: number;
+      ids: (number | string)[];
+      action: "activate" | "deactivate" | "price" | "category" | "feature" | "unfeature";
+      value?: number | string;
     }) => {
-      const ids = [...new Set(input.ids)].filter(Number.isInteger).slice(0, 250);
+      const ids = [...new Set((input.ids ?? []).map(toId))].filter(
+        (id): id is number => id !== null,
+      );
       if (ids.length === 0) throw new Error("Select at least one product");
-      if (["price", "category"].includes(input.action) && !Number.isFinite(input.value))
+      const value = toNumber(input.value);
+      if (["price", "category"].includes(input.action) && value === null)
         throw new Error("Enter a valid value");
-      return { ...input, ids };
+      return { action: input.action, ids, value };
     },
   )
   .handler(async ({ data, context }) => {
@@ -369,9 +467,13 @@ export const bulkUpdateProducts = createServerFn({ method: "POST" })
         ? { is_active: true }
         : data.action === "deactivate"
           ? { is_active: false }
-          : data.action === "price"
-            ? { price: Number(Number(data.value).toFixed(2)) }
-            : { category_id: Number(data.value) };
+          : data.action === "feature"
+            ? { is_featured: true }
+            : data.action === "unfeature"
+              ? { is_featured: false }
+              : data.action === "price"
+                ? { price: Number(Number(data.value).toFixed(2)) }
+                : { category_id: Number(data.value) };
     const { error } = await supabaseAdmin.from("products").update(patch).in("id", data.ids);
     if (error) throw new Error(error.message);
     return { message: `${data.ids.length} products updated.` };
@@ -381,35 +483,34 @@ export const saveCategory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: {
-      id?: number | null;
+      id?: number | string | null;
       kind: "category" | "subcategory";
       name: string;
       description?: string;
-      categoryId?: number;
-      sortOrder?: number;
+      categoryId?: number | string | null;
+      sortOrder?: number | string;
       imageUrl?: string;
     }) => {
-      const name = input.name.trim().slice(0, 80);
+      const name = (input.name ?? "").trim().slice(0, 80);
       if (name.length < 2) throw new Error("Name is too short");
-      if (input.id !== undefined && input.id !== null && !Number.isInteger(input.id))
-        throw new Error("Invalid category");
-      if (input.kind === "subcategory" && !Number.isInteger(input.categoryId))
-        throw new Error("Choose a parent category");
+      const parentId = toId(input.categoryId);
+      if (input.kind === "subcategory" && !parentId) throw new Error("Choose a parent category");
       return {
-        id: input.id ?? null,
+        id: toId(input.id),
         kind: input.kind,
         patch:
           input.kind === "subcategory"
             ? {
                 name,
-                description: input.description?.trim().slice(0, 500) || null,
-                category_id: input.categoryId,
+                description: input.description?.trim().slice(0, 1000) || null,
+                category_id: parentId,
+                sort_order: toNumber(input.sortOrder) ?? 0,
                 image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               }
             : {
                 name,
-                description: input.description?.trim().slice(0, 500) || null,
-                sort_order: input.sortOrder ?? 0,
+                description: input.description?.trim().slice(0, 1000) || null,
+                sort_order: toNumber(input.sortOrder) ?? 0,
                 image_url: input.imageUrl?.trim().slice(0, 1000) || null,
               },
       };
@@ -427,12 +528,79 @@ export const saveCategory = createServerFn({ method: "POST" })
     return { message: `${data.kind === "category" ? "Category" : "Subcategory"} saved.` };
   });
 
+/** Deletes a category or subcategory, detaching any products still attached. */
+export const deleteCategory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string; kind: "category" | "subcategory" }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid category");
+    return { id, kind: input.kind === "subcategory" ? "subcategory" : "category" };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (data.kind === "subcategory") {
+      await supabaseAdmin
+        .from("products")
+        .update({ subcategory_id: null })
+        .eq("subcategory_id", data.id);
+      const { error } = await supabaseAdmin.from("subcategories").delete().eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { message: "Subcategory deleted." };
+    }
+    await supabaseAdmin.from("products").update({ category_id: null }).eq("category_id", data.id);
+    await supabaseAdmin.from("subcategories").delete().eq("category_id", data.id);
+    const { error } = await supabaseAdmin.from("categories").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: "Category deleted." };
+  });
+
+/** Creates or updates a reusable customer message template. */
+export const saveTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id?: number | string | null; title: string; category: string; body: string }) => {
+    const title = (input.title ?? "").trim().slice(0, 120);
+    const body = (input.body ?? "").trim().slice(0, 4000);
+    if (title.length < 2) throw new Error("Give the template a title");
+    if (body.length < 2) throw new Error("Template message is empty");
+    return {
+      id: toId(input.id),
+      patch: { title, category: (input.category || "custom").trim().slice(0, 40), body },
+    };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const result = data.id
+      ? await supabaseAdmin.from("message_templates").update(data.patch).eq("id", data.id)
+      : await supabaseAdmin.from("message_templates").insert(data.patch);
+    if (result.error) throw new Error(result.error.message);
+    return { message: data.id ? "Template updated." : "Template saved." };
+  });
+
+export const deleteTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string }) => {
+    const id = toId(input.id);
+    if (!id) throw new Error("Invalid template");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("message_templates").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { message: "Template deleted." };
+  });
+
+
 export const resolveDispute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { id: number; resolution: string }) => {
     const resolution = input.resolution.trim().slice(0, 1000);
-    if (!Number.isInteger(input.id) || resolution.length < 2) throw new Error("Enter a resolution");
-    return { id: input.id, resolution };
+    const disputeId = toId(input.id);
+    if (!disputeId || resolution.length < 2) throw new Error("Enter a resolution");
+    return { id: disputeId, resolution };
   })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -471,24 +639,26 @@ export const saveSettings = createServerFn({ method: "POST" })
       storeName: string;
       welcomeMessage: string;
       supportUsername?: string;
+      channelUsername?: string;
       miniAppUrl?: string;
       bannerImageUrl?: string;
       btcAddress?: string;
       usdtTrc20Address?: string;
       usdcErc20Address?: string;
-      paymentExpiryMinutes?: number;
-      amountTolerancePercent?: number;
+      paymentExpiryMinutes?: number | string;
+      amountTolerancePercent?: number | string;
     }) => ({
       store_name: input.storeName.trim().slice(0, 100),
       welcome_message: input.welcomeMessage.trim().slice(0, 2000),
       support_username: input.supportUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
+      channel_username: input.channelUsername?.trim().replace(/^@/, "").slice(0, 100) || null,
       mini_app_url: input.miniAppUrl?.trim().slice(0, 1000) || null,
       banner_image_url: input.bannerImageUrl?.trim().slice(0, 1000) || null,
       btc_address: input.btcAddress?.trim().slice(0, 200) || null,
       usdt_trc20_address: input.usdtTrc20Address?.trim().slice(0, 200) || null,
       usdc_erc20_address: input.usdcErc20Address?.trim().slice(0, 200) || null,
-      payment_expiry_minutes: Math.min(1440, Math.max(5, input.paymentExpiryMinutes ?? 30)),
-      amount_tolerance_percent: Math.min(20, Math.max(0, input.amountTolerancePercent ?? 2)),
+      payment_expiry_minutes: Math.min(1440, Math.max(5, toNumber(input.paymentExpiryMinutes) ?? 30)),
+      amount_tolerance_percent: Math.min(20, Math.max(0, toNumber(input.amountTolerancePercent) ?? 2)),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -504,8 +674,8 @@ export const inviteTelegramUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
     (input: { telegramId: string; firstName?: string; username?: string; note?: string }) => {
-      const telegramId = Number(String(input.telegramId ?? "").trim());
-      if (!Number.isInteger(telegramId) || telegramId <= 0)
+      const telegramId = toId(String(input.telegramId ?? "").trim());
+      if (!telegramId)
         throw new Error("Enter a valid numeric Telegram ID");
       return {
         telegramId,
@@ -572,7 +742,8 @@ export const updateProduct = createServerFn({ method: "POST" })
       description?: string;
       isActive?: boolean;
     }) => {
-      if (!Number.isInteger(input.id)) throw new Error("Invalid product");
+      const productId = toId(input.id);
+      if (!productId) throw new Error("Invalid product");
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) {
         const name = input.name.trim();
@@ -588,7 +759,7 @@ export const updateProduct = createServerFn({ method: "POST" })
         patch["description"] = input.description.trim().slice(0, 1000) || null;
       if (input.isActive !== undefined) patch["is_active"] = input.isActive;
       if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
-      return { id: input.id, patch };
+      return { id: productId, patch };
     },
   )
   .handler(async ({ data, context }) => {
@@ -610,7 +781,8 @@ export const renameCategory = createServerFn({ method: "POST" })
       name?: string;
       description?: string;
     }) => {
-      if (!Number.isInteger(input.id)) throw new Error("Invalid category");
+      const catId = toId(input.id);
+      if (!catId) throw new Error("Invalid category");
       if (input.kind !== "category" && input.kind !== "subcategory")
         throw new Error("Invalid kind");
       const patch: Record<string, unknown> = {};
@@ -622,7 +794,7 @@ export const renameCategory = createServerFn({ method: "POST" })
       if (input.description !== undefined)
         patch["description"] = input.description.trim().slice(0, 500) || null;
       if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
-      return { id: input.id, kind: input.kind, patch };
+      return { id: catId, kind: input.kind, patch };
     },
   )
   .handler(async ({ data, context }) => {
