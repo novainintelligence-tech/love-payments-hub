@@ -9,11 +9,15 @@ export type StoreSettings = {
   channel_username: string | null;
   admin_telegram_id: number | null;
   btc_address: string | null;
+  ltc_address: string | null;
   usdt_trc20_address: string | null;
+  usdt_erc20_address: string | null;
   usdc_erc20_address: string | null;
   auto_confirm: boolean;
   payment_expiry_minutes: number;
   min_topup_usd: number;
+  min_purchase_usd: number;
+  bonus_unlock_deposit_usd: number;
   amount_tolerance_percent: number;
   banner_image_url: string | null;
   mini_app_url: string | null;
