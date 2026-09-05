@@ -74,8 +74,10 @@ function bonusText(balance: number): string {
     "",
     `💰 New balance: <b>${money(balance)}</b>`,
     "",
-    "🛍 Use it right away on any product, or top up and cash out bigger today.",
-    "🚀 No delay, no stress — start making money with us now!",
+    "🔓 <b>How to unlock it:</b> make your first deposit of <b>$5</b> or more and the bonus becomes",
+    "spendable instantly, on top of whatever you deposit.",
+    "",
+    "🚀 No delay, no stress — top up and start cashing out with us today!",
   ].join("\n");
 }
 
@@ -128,6 +130,10 @@ export async function runOnboarding(
   let balance = Number(user.wallet_balance) + SIGNUP_BONUS_USD;
   try {
     balance = await adjustBalance(user.id, SIGNUP_BONUS_USD, "Subscription welcome bonus");
+    await db
+      .from("bot_users")
+      .update({ locked_bonus: SIGNUP_BONUS_USD })
+      .eq("id", user.id);
   } catch (error) {
     console.error("[onboarding] bonus credit failed", error);
     await db.from("bot_users").update({ welcome_bonus_granted: false }).eq("id", user.id);

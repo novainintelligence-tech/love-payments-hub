@@ -9,11 +9,15 @@ export type StoreSettings = {
   channel_username: string | null;
   admin_telegram_id: number | null;
   btc_address: string | null;
+  ltc_address: string | null;
   usdt_trc20_address: string | null;
+  usdt_erc20_address: string | null;
   usdc_erc20_address: string | null;
   auto_confirm: boolean;
   payment_expiry_minutes: number;
   min_topup_usd: number;
+  min_purchase_usd: number;
+  bonus_unlock_deposit_usd: number;
   amount_tolerance_percent: number;
   banner_image_url: string | null;
   mini_app_url: string | null;
@@ -36,11 +40,44 @@ export type BotUser = {
   username: string | null;
   first_name: string | null;
   wallet_balance: number;
+  /** Portion of the wallet that comes from the signup bonus and cannot be spent yet. */
+  locked_bonus?: number;
   is_banned: boolean;
   welcome_bonus_granted?: boolean;
   /** True only on the update that first created this user. */
   is_new?: boolean;
 };
+
+/** Wallet money the user is actually allowed to spend right now. */
+export function spendable(user: { wallet_balance: number; locked_bonus?: number | null }): number {
+  return Math.max(0, Number(user.wallet_balance) - Number(user.locked_bonus ?? 0));
+}
+
+/** Unlocks the signup bonus when the user has deposited enough; returns unlocked amount. */
+export async function unlockBonusIfEligible(userId: number): Promise<number> {
+  const db = await getDb();
+  const { data, error } = await db.rpc("unlock_bonus_if_eligible", { _user_id: userId });
+  if (error) {
+    console.error("[bonus] unlock check failed", error);
+    return 0;
+  }
+  return Number(data ?? 0);
+}
+
+/** Live wallet figures for a user. */
+export async function getBalances(
+  userId: number,
+): Promise<{ balance: number; locked: number; spendable: number }> {
+  const db = await getDb();
+  const { data } = await db
+    .from("bot_users")
+    .select("wallet_balance, locked_bonus")
+    .eq("id", userId)
+    .maybeSingle();
+  const balance = Number(data?.wallet_balance ?? 0);
+  const locked = Number(data?.locked_bonus ?? 0);
+  return { balance, locked, spendable: Math.max(0, balance - locked) };
+}
 
 export async function getDb() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -57,9 +94,20 @@ export async function getSettings(): Promise<StoreSettings> {
 }
 
 export function addressFor(settings: StoreSettings, asset: PaymentAsset): string {
-  if (asset === "BTC") return settings.btc_address ?? "";
-  if (asset === "USDT_TRC20") return settings.usdt_trc20_address ?? "";
-  return settings.usdc_erc20_address ?? "";
+  const map: Record<PaymentAsset, string | null> = {
+    BTC: settings.btc_address,
+    LTC: settings.ltc_address,
+    USDT_TRC20: settings.usdt_trc20_address,
+    USDT_ERC20: settings.usdt_erc20_address,
+    USDC_ERC20: settings.usdc_erc20_address,
+  };
+  return (map[asset] ?? "").trim();
+}
+
+/** Coins that currently have a receiving address configured. */
+export function enabledAssets(settings: StoreSettings): PaymentAsset[] {
+  const all: PaymentAsset[] = ["BTC", "LTC", "USDT_TRC20", "USDT_ERC20", "USDC_ERC20"];
+  return all.filter((asset) => addressFor(settings, asset).length > 0);
 }
 
 export async function getOrCreateUser(from: {

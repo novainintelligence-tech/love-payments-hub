@@ -38,6 +38,7 @@ export type Database = {
           first_name: string | null
           id: number
           is_banned: boolean
+          locked_bonus: number
           telegram_id: number
           updated_at: string
           username: string | null
@@ -49,6 +50,7 @@ export type Database = {
           first_name?: string | null
           id?: number
           is_banned?: boolean
+          locked_bonus?: number
           telegram_id: number
           updated_at?: string
           username?: string | null
@@ -60,6 +62,7 @@ export type Database = {
           first_name?: string | null
           id?: number
           is_banned?: boolean
+          locked_bonus?: number
           telegram_id?: number
           updated_at?: string
           username?: string | null
@@ -504,9 +507,12 @@ export type Database = {
           amount_tolerance_percent: number
           auto_confirm: boolean
           banner_image_url: string | null
+          bonus_unlock_deposit_usd: number
           btc_address: string | null
           channel_username: string | null
           id: number
+          ltc_address: string | null
+          min_purchase_usd: number
           min_topup_usd: number
           mini_app_url: string | null
           payment_expiry_minutes: number
@@ -514,6 +520,7 @@ export type Database = {
           support_username: string | null
           updated_at: string
           usdc_erc20_address: string | null
+          usdt_erc20_address: string | null
           usdt_trc20_address: string | null
           welcome_message: string
         }
@@ -522,9 +529,12 @@ export type Database = {
           amount_tolerance_percent?: number
           auto_confirm?: boolean
           banner_image_url?: string | null
+          bonus_unlock_deposit_usd?: number
           btc_address?: string | null
           channel_username?: string | null
           id?: number
+          ltc_address?: string | null
+          min_purchase_usd?: number
           min_topup_usd?: number
           mini_app_url?: string | null
           payment_expiry_minutes?: number
@@ -532,6 +542,7 @@ export type Database = {
           support_username?: string | null
           updated_at?: string
           usdc_erc20_address?: string | null
+          usdt_erc20_address?: string | null
           usdt_trc20_address?: string | null
           welcome_message?: string
         }
@@ -540,9 +551,12 @@ export type Database = {
           amount_tolerance_percent?: number
           auto_confirm?: boolean
           banner_image_url?: string | null
+          bonus_unlock_deposit_usd?: number
           btc_address?: string | null
           channel_username?: string | null
           id?: number
+          ltc_address?: string | null
+          min_purchase_usd?: number
           min_topup_usd?: number
           mini_app_url?: string | null
           payment_expiry_minutes?: number
@@ -550,6 +564,7 @@ export type Database = {
           support_username?: string | null
           updated_at?: string
           usdc_erc20_address?: string | null
+          usdt_erc20_address?: string | null
           usdt_trc20_address?: string | null
           welcome_message?: string
         }
@@ -781,12 +796,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      unlock_bonus_if_eligible: { Args: { _user_id: number }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
       dispute_status: "nil" | "opened" | "resolved"
       order_status: "processing" | "completed" | "cancelled"
-      payment_asset: "BTC" | "USDT_TRC20" | "USDC_ERC20"
+      payment_asset: "BTC" | "USDT_TRC20" | "USDC_ERC20" | "USDT_ERC20" | "LTC"
       product_type: "key" | "file"
       transaction_status:
         | "pending"
@@ -924,7 +940,7 @@ export const Constants = {
       app_role: ["admin", "moderator", "user"],
       dispute_status: ["nil", "opened", "resolved"],
       order_status: ["processing", "completed", "cancelled"],
-      payment_asset: ["BTC", "USDT_TRC20", "USDC_ERC20"],
+      payment_asset: ["BTC", "USDT_TRC20", "USDC_ERC20", "USDT_ERC20", "LTC"],
       product_type: ["key", "file"],
       transaction_status: [
         "pending",

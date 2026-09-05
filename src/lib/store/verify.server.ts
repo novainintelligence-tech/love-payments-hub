@@ -13,6 +13,7 @@ export type VerifyResult = {
 
 const USDT_TRC20_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const USDC_ERC20_CONTRACT = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+const USDT_ERC20_CONTRACT = "0xdac17f958d2ee523a2206206994597c13d831ec7";
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
 const ETH_RPCS = [
@@ -37,7 +38,7 @@ async function getJson(url: string, init?: RequestInit): Promise<unknown | null>
 
 export function isPlausibleHash(asset: PaymentAsset, hash: string): boolean {
   const value = hash.trim();
-  if (asset === "USDC_ERC20") return /^0x[0-9a-fA-F]{64}$/.test(value);
+  if (asset === "USDC_ERC20" || asset === "USDT_ERC20") return /^0x[0-9a-fA-F]{64}$/.test(value);
   return /^(0x)?[0-9a-fA-F]{64}$/.test(value);
 }
 
@@ -134,7 +135,52 @@ function topicToAddress(topic: string): string {
   return `0x${topic.slice(-40)}`.toLowerCase();
 }
 
-async function verifyUsdc(hash: string, address: string): Promise<VerifyResult> {
+/** Litecoin verification via the public Blockchair explorer API. */
+async function verifyLtc(hash: string, address: string): Promise<VerifyResult> {
+  const data = (await getJson(
+    `https://api.blockchair.com/litecoin/dashboards/transaction/${encodeURIComponent(hash)}`,
+  )) as {
+    data?: Record<
+      string,
+      {
+        transaction?: { block_id?: number };
+        outputs?: { recipient?: string; value?: number }[];
+      }
+    >;
+    context?: { state?: number };
+  } | null;
+  const entry = data?.data?.[hash] ?? data?.data?.[hash.toLowerCase()];
+  if (!entry) {
+    return {
+      found: false,
+      paid: 0,
+      confirmations: 0,
+      note: "Transaction not found on the Litecoin network yet.",
+    };
+  }
+  const litoshi = (entry.outputs ?? [])
+    .filter((out) => (out.recipient ?? "").toLowerCase() === address.toLowerCase())
+    .reduce((sum, out) => sum + (out.value ?? 0), 0);
+  const blockId = entry.transaction?.block_id ?? -1;
+  const tip = data?.context?.state ?? 0;
+  const confirmations = blockId > 0 && tip > 0 ? Math.max(1, tip - blockId + 1) : 0;
+  return {
+    found: litoshi > 0,
+    paid: litoshi / 1e8,
+    confirmations,
+    note:
+      litoshi > 0
+        ? `Paid ${(litoshi / 1e8).toFixed(8)} LTC to the store address.`
+        : "This transaction does not pay the store LTC address.",
+  };
+}
+
+async function verifyErc20(
+  hash: string,
+  address: string,
+  contract: string,
+  ticker: string,
+): Promise<VerifyResult> {
   const receipt = (await ethRpc("eth_getTransactionReceipt", [hash])) as {
     status?: string;
     blockNumber?: string;
@@ -158,7 +204,7 @@ async function verifyUsdc(hash: string, address: string): Promise<VerifyResult> 
   }
   let total = 0;
   for (const log of receipt.logs ?? []) {
-    if ((log.address ?? "").toLowerCase() !== USDC_ERC20_CONTRACT) continue;
+    if ((log.address ?? "").toLowerCase() !== contract) continue;
     const topics = log.topics ?? [];
     if (topics.length < 3 || topics[0]?.toLowerCase() !== TRANSFER_TOPIC) continue;
     if (topicToAddress(topics[2] as string) !== address.toLowerCase()) continue;
@@ -175,8 +221,8 @@ async function verifyUsdc(hash: string, address: string): Promise<VerifyResult> 
     confirmations,
     note:
       total > 0
-        ? `Paid ${total.toFixed(2)} USDC to the store address.`
-        : "This transaction does not pay the store USDC address.",
+        ? `Paid ${total.toFixed(2)} ${ticker} to the store address.`
+        : `This transaction does not pay the store ${ticker} address.`,
   };
 }
 
@@ -194,13 +240,19 @@ export async function verifyPayment(
     };
   }
   if (asset === "BTC") return verifyBtc(hash.replace(/^0x/, ""), address);
+  if (asset === "LTC") return verifyLtc(hash.replace(/^0x/, ""), address);
   if (asset === "USDT_TRC20") return verifyTrc20(hash, address);
-  return verifyUsdc(hash.startsWith("0x") ? hash : `0x${hash}`, address);
+  const normalized = hash.startsWith("0x") ? hash : `0x${hash}`;
+  if (asset === "USDT_ERC20")
+    return verifyErc20(normalized, address, USDT_ERC20_CONTRACT, "USDT");
+  return verifyErc20(normalized, address, USDC_ERC20_CONTRACT, "USDC");
 }
 
 /** Minimum confirmations before an automatic credit is granted. */
 export const MIN_CONFIRMATIONS: Record<PaymentAsset, number> = {
   BTC: 1,
+  LTC: 2,
   USDT_TRC20: 1,
+  USDT_ERC20: 2,
   USDC_ERC20: 2,
 };

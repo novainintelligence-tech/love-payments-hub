@@ -10,6 +10,7 @@ import {
 import {
   ASSET_LABEL,
   ASSET_NETWORK,
+  ASSET_TICKER,
   formatAmount,
   getUsdPrice,
   type PaymentAsset,
@@ -82,7 +83,7 @@ export function invoiceText(tx: Transaction, settings: StoreSettings): string {
     `Network: <b>${escapeHtml(ASSET_NETWORK[tx.asset])}</b>`,
     "",
     `Send exactly:`,
-    `<code>${expected}</code> ${tx.asset === "BTC" ? "BTC" : tx.asset === "USDT_TRC20" ? "USDT" : "USDC"}`,
+    `<code>${expected}</code> ${ASSET_TICKER[tx.asset]}  <i>(= ${money(tx.amount_usd)})</i>`,
     "",
     `To this address:`,
     `<code>${escapeHtml(tx.pay_address)}</code>`,
@@ -145,6 +146,9 @@ export async function settleTransaction(
   );
   await db.from("transactions").update({ credited_amount: tx.amount_usd }).eq("id", tx.id);
 
+  const { unlockBonusIfEligible } = await import("./db.server");
+  const unlocked = await unlockBonusIfEligible(tx.user_id);
+
   const telegramId = tx.bot_users?.telegram_id;
   if (telegramId) {
     await sendMessage(
@@ -154,6 +158,9 @@ export async function settleTransaction(
         `Invoice: <code>${escapeHtml(tx.invoice_code)}</code>`,
         `Credited: <b>${money(tx.amount_usd)}</b>`,
         `New balance: <b>${money(balance)}</b>`,
+        unlocked > 0
+          ? `\n🎁 Your <b>${money(unlocked)}</b> signup bonus is now unlocked and spendable!`
+          : "",
         opts.auto ? "\nConfirmed automatically on-chain." : "\nConfirmed by an admin.",
       ].join("\n"),
       [[{ text: "🛍 Start shopping", callback_data: "menu" }]],
