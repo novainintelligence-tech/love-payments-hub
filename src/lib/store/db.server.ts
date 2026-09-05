@@ -94,9 +94,20 @@ export async function getSettings(): Promise<StoreSettings> {
 }
 
 export function addressFor(settings: StoreSettings, asset: PaymentAsset): string {
-  if (asset === "BTC") return settings.btc_address ?? "";
-  if (asset === "USDT_TRC20") return settings.usdt_trc20_address ?? "";
-  return settings.usdc_erc20_address ?? "";
+  const map: Record<PaymentAsset, string | null> = {
+    BTC: settings.btc_address,
+    LTC: settings.ltc_address,
+    USDT_TRC20: settings.usdt_trc20_address,
+    USDT_ERC20: settings.usdt_erc20_address,
+    USDC_ERC20: settings.usdc_erc20_address,
+  };
+  return (map[asset] ?? "").trim();
+}
+
+/** Coins that currently have a receiving address configured. */
+export function enabledAssets(settings: StoreSettings): PaymentAsset[] {
+  const all: PaymentAsset[] = ["BTC", "LTC", "USDT_TRC20", "USDT_ERC20", "USDC_ERC20"];
+  return all.filter((asset) => addressFor(settings, asset).length > 0);
 }
 
 export async function getOrCreateUser(from: {
