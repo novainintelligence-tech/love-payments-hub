@@ -40,11 +40,44 @@ export type BotUser = {
   username: string | null;
   first_name: string | null;
   wallet_balance: number;
+  /** Portion of the wallet that comes from the signup bonus and cannot be spent yet. */
+  locked_bonus?: number;
   is_banned: boolean;
   welcome_bonus_granted?: boolean;
   /** True only on the update that first created this user. */
   is_new?: boolean;
 };
+
+/** Wallet money the user is actually allowed to spend right now. */
+export function spendable(user: { wallet_balance: number; locked_bonus?: number | null }): number {
+  return Math.max(0, Number(user.wallet_balance) - Number(user.locked_bonus ?? 0));
+}
+
+/** Unlocks the signup bonus when the user has deposited enough; returns unlocked amount. */
+export async function unlockBonusIfEligible(userId: number): Promise<number> {
+  const db = await getDb();
+  const { data, error } = await db.rpc("unlock_bonus_if_eligible", { _user_id: userId });
+  if (error) {
+    console.error("[bonus] unlock check failed", error);
+    return 0;
+  }
+  return Number(data ?? 0);
+}
+
+/** Live wallet figures for a user. */
+export async function getBalances(
+  userId: number,
+): Promise<{ balance: number; locked: number; spendable: number }> {
+  const db = await getDb();
+  const { data } = await db
+    .from("bot_users")
+    .select("wallet_balance, locked_bonus")
+    .eq("id", userId)
+    .maybeSingle();
+  const balance = Number(data?.wallet_balance ?? 0);
+  const locked = Number(data?.locked_bonus ?? 0);
+  return { balance, locked, spendable: Math.max(0, balance - locked) };
+}
 
 export async function getDb() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
