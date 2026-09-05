@@ -786,7 +786,7 @@ export type Database = {
       app_role: "admin" | "moderator" | "user"
       dispute_status: "nil" | "opened" | "resolved"
       order_status: "processing" | "completed" | "cancelled"
-      payment_asset: "BTC" | "USDT_TRC20" | "USDC_ERC20"
+      payment_asset: "BTC" | "USDT_TRC20" | "USDC_ERC20" | "USDT_ERC20" | "LTC"
       product_type: "key" | "file"
       transaction_status:
         | "pending"
@@ -924,7 +924,7 @@ export const Constants = {
       app_role: ["admin", "moderator", "user"],
       dispute_status: ["nil", "opened", "resolved"],
       order_status: ["processing", "completed", "cancelled"],
-      payment_asset: ["BTC", "USDT_TRC20", "USDC_ERC20"],
+      payment_asset: ["BTC", "USDT_TRC20", "USDC_ERC20", "USDT_ERC20", "LTC"],
       product_type: ["key", "file"],
       transaction_status: [
         "pending",
