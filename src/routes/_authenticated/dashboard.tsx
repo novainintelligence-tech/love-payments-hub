@@ -450,7 +450,14 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
             </option>
           ))}
       </select>
-      <ImageField value={form.imageUrl} onChange={(value) => set("imageUrl", value)} />
+      <ImageField
+        value={form.imageUrl}
+        onChange={(value) => set("imageUrl", value)}
+        title={form.name}
+        description={form.description}
+        badge={form.isFeatured ? "Featured" : form.productType === "key" ? "Unique key" : "File"}
+        caption={form.price ? `$${Number(form.price || 0).toFixed(2)}` : ""}
+      />
       <Input
         placeholder="Download URL"
         value={form.downloadLink}
@@ -478,12 +485,35 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
         value={form.description}
         onChange={(e) => set("description", e.target.value)}
       />
-      <Button disabled={busy} onClick={() => submit({ ...form, price: Number(form.price) })}>
-        {initial ? "Save product" : "Create product"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={busy} onClick={() => submit({ ...form, price: Number(form.price) })}>
+          {initial ? "Save product" : "Create product"}
+        </Button>
+        {!initial && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            title="Save and start another product in the same category"
+            onClick={async () => {
+              await submit({ ...form, price: Number(form.price) });
+              setForm((old) => ({
+                ...old,
+                id: undefined,
+                name: "",
+                description: "",
+                imageUrl: "",
+                downloadLink: "",
+              }));
+            }}
+          >
+            <Plus className="size-4" /> Save & add another
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
+
 
 function ProductRow({
   product,
