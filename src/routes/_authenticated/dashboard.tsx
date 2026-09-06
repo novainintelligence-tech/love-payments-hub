@@ -698,18 +698,36 @@ function CategoryForm({ initial, kind = "category", categories = [], busy, submi
         >
           {initial ? "Save" : `Add ${kind}`}
         </Button>
+        {!initial && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || name.trim().length < 2}
+            title={`Save and start another ${kind}`}
+            onClick={async () => {
+              await submit({ kind, name, description, categoryId, imageUrl });
+              setName("");
+              setDescription("");
+              setImageUrl("");
+            }}
+          >
+            <Plus className="size-4" /> Save & add another
+          </Button>
+        )}
       </div>
-      {kind === "category" && (
-        <>
-          <Input
-            placeholder="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <ImageField value={imageUrl} onChange={setImageUrl} />
-        </>
-      )}
-      {kind === "subcategory" && <ImageField value={imageUrl} onChange={setImageUrl} />}
+      <Input
+        placeholder="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <ImageField
+        value={imageUrl}
+        onChange={setImageUrl}
+        title={name}
+        description={description}
+        badge={kind === "category" ? "Category" : "Subcategory"}
+      />
+
     </div>
   );
 }
