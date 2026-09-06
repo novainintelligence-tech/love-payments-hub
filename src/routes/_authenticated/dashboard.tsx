@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy, Star, Trash2, CopyPlus } from "lucide-react";
+import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
