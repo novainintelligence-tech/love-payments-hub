@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy, Star, Trash2, CopyPlus } from "lucide-react";
+import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
@@ -450,7 +450,14 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
             </option>
           ))}
       </select>
-      <ImageField value={form.imageUrl} onChange={(value) => set("imageUrl", value)} />
+      <ImageField
+        value={form.imageUrl}
+        onChange={(value) => set("imageUrl", value)}
+        title={form.name}
+        description={form.description}
+        badge={form.isFeatured ? "Featured" : form.productType === "key" ? "Unique key" : "File"}
+        caption={form.price ? `$${Number(form.price || 0).toFixed(2)}` : ""}
+      />
       <Input
         placeholder="Download URL"
         value={form.downloadLink}
@@ -478,12 +485,35 @@ function ProductForm({ categories, subcategories, busy, submit, initial }: any) 
         value={form.description}
         onChange={(e) => set("description", e.target.value)}
       />
-      <Button disabled={busy} onClick={() => submit({ ...form, price: Number(form.price) })}>
-        {initial ? "Save product" : "Create product"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={busy} onClick={() => submit({ ...form, price: Number(form.price) })}>
+          {initial ? "Save product" : "Create product"}
+        </Button>
+        {!initial && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            title="Save and start another product in the same category"
+            onClick={async () => {
+              await submit({ ...form, price: Number(form.price) });
+              setForm((old) => ({
+                ...old,
+                id: undefined,
+                name: "",
+                description: "",
+                imageUrl: "",
+                downloadLink: "",
+              }));
+            }}
+          >
+            <Plus className="size-4" /> Save & add another
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
+
 
 function ProductRow({
   product,
@@ -668,18 +698,36 @@ function CategoryForm({ initial, kind = "category", categories = [], busy, submi
         >
           {initial ? "Save" : `Add ${kind}`}
         </Button>
+        {!initial && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || name.trim().length < 2}
+            title={`Save and start another ${kind}`}
+            onClick={async () => {
+              await submit({ kind, name, description, categoryId, imageUrl });
+              setName("");
+              setDescription("");
+              setImageUrl("");
+            }}
+          >
+            <Plus className="size-4" /> Save & add another
+          </Button>
+        )}
       </div>
-      {kind === "category" && (
-        <>
-          <Input
-            placeholder="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <ImageField value={imageUrl} onChange={setImageUrl} />
-        </>
-      )}
-      {kind === "subcategory" && <ImageField value={imageUrl} onChange={setImageUrl} />}
+      <Input
+        placeholder="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <ImageField
+        value={imageUrl}
+        onChange={setImageUrl}
+        title={name}
+        description={description}
+        badge={kind === "category" ? "Category" : "Subcategory"}
+      />
+
     </div>
   );
 }
@@ -1171,8 +1219,23 @@ function Broadcasts({ data, busy, run }: { data: AdminData; busy: boolean; run: 
   );
 }
 
-function ImageField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function ImageField({
+  value,
+  onChange,
+  title,
+  description,
+  badge,
+  caption,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  title?: string;
+  description?: string;
+  badge?: string;
+  caption?: string;
+}) {
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   async function upload(file: File) {
     setUploading(true);
     try {
@@ -1180,6 +1243,7 @@ function ImageField({ value, onChange }: { value: string; onChange: (value: stri
       const { error } = await supabase.storage.from("media").upload(path, file, { upsert: false });
       if (error) throw error;
       onChange(`/api/public/media/${path}`);
+      toast.success("Image saved to the card");
     } catch (error) {
       toast.error(
         error instanceof Error ? `Image upload failed: ${error.message}` : "Image upload failed",
@@ -1188,26 +1252,81 @@ function ImageField({ value, onChange }: { value: string; onChange: (value: stri
       setUploading(false);
     }
   }
+  const heading = title?.trim() || "Untitled";
+  const blurb = description?.trim() || "Add a description so shoppers know what this is about.";
   return (
-    <div className="flex items-center gap-2">
-      <Input placeholder="Image URL" value={value} onChange={(e) => onChange(e.target.value)} />
-      <label className="shrink-0 cursor-pointer rounded-md border border-input px-3 py-2 text-sm">
-        {uploading ? "Uploading..." : "Upload"}
-        <input
-          className="hidden"
-          type="file"
-          accept="image/*"
-          disabled={uploading}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-            e.currentTarget.value = "";
-          }}
+    <div className="flex flex-col gap-2 md:col-span-2">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) void upload(file);
+        }}
+        className={`group relative overflow-hidden rounded-xl border transition ${
+          dragging ? "border-primary ring-2 ring-primary/40" : "border-border"
+        }`}
+      >
+        <div className="relative aspect-[16/7] w-full bg-muted">
+          {value ? (
+            <img src={value} alt={heading} className="size-full object-cover" loading="lazy" />
+          ) : (
+            <div className="flex size-full flex-col items-center justify-center gap-1 text-center">
+              <ImagePlus className="size-6 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">
+                Drag an image here or use the button below
+              </p>
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
+            {badge && (
+              <span className="w-fit rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+                {badge}
+              </span>
+            )}
+            <p className="text-base font-semibold leading-tight text-foreground">{heading}</p>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{blurb}</p>
+            {caption && <p className="font-mono text-xs text-primary">{caption}</p>}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="shrink-0 cursor-pointer rounded-md border border-input px-3 py-2 text-sm">
+          {uploading ? "Uploading..." : value ? "Replace image" : "Upload image"}
+          <input
+            className="hidden"
+            type="file"
+            accept="image/*"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </label>
+        {value && (
+          <Button size="sm" variant="ghost" onClick={() => onChange("")}>
+            Remove
+          </Button>
+        )}
+        <Input
+          className="min-w-40 flex-1"
+          placeholder="or paste an image link"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
         />
-      </label>
+      </div>
     </div>
   );
 }
+
 
 function Settings({ data, busy, run }: { data: AdminData; busy: boolean; run: Run }) {
   const save = useServerFn(saveSettings);
