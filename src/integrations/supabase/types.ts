@@ -43,6 +43,7 @@ export type Database = {
           updated_at: string
           username: string | null
           wallet_balance: number
+          web_user_id: string | null
           welcome_bonus_granted: boolean
         }
         Insert: {
@@ -55,6 +56,7 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_balance?: number
+          web_user_id?: string | null
           welcome_bonus_granted?: boolean
         }
         Update: {
@@ -67,6 +69,7 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_balance?: number
+          web_user_id?: string | null
           welcome_bonus_granted?: boolean
         }
         Relationships: []
@@ -500,6 +503,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      store_reviews: {
+        Row: {
+          author: string
+          body: string
+          created_at: string
+          id: number
+          initials: string
+          is_published: boolean
+          product_label: string | null
+          rating: number
+        }
+        Insert: {
+          author: string
+          body: string
+          created_at?: string
+          id?: never
+          initials: string
+          is_published?: boolean
+          product_label?: string | null
+          rating?: number
+        }
+        Update: {
+          author?: string
+          body?: string
+          created_at?: string
+          id?: never
+          initials?: string
+          is_published?: boolean
+          product_label?: string | null
+          rating?: number
+        }
+        Relationships: []
       }
       store_settings: {
         Row: {
