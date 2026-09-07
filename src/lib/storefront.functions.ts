@@ -174,9 +174,44 @@ export const accountOverview = createServerFn({ method: "GET" })
     };
   });
 
+/** Soft link used at sign-up: connects an existing store account when one matches. */
+export const claimTelegramAccount = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        handle: z.string().trim().max(64).optional(),
+        telegramId: z.string().trim().max(32).optional(),
+      })
+      .parse(data),
+  )
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const handle = (data.handle ?? "").replace(/^@/, "").trim();
+    const numeric = (data.telegramId ?? "").replace(/\D/g, "");
+    if (!handle && !numeric) return { linked: false as const };
+
+    const base = supabaseAdmin.from("bot_users").select("id,web_user_id");
+    const { data: found } = numeric
+      ? await base.eq("telegram_id", Number(numeric)).maybeSingle()
+      : await base.ilike("username", handle).maybeSingle();
+
+    if (!found) return { linked: false as const };
+    if (found.web_user_id && found.web_user_id !== context.userId) {
+      throw new Error("That Telegram account is already connected to another login.");
+    }
+    const { error } = await supabaseAdmin
+      .from("bot_users")
+      .update({ web_user_id: context.userId })
+      .eq("id", found.id);
+    if (error) throw new Error(error.message);
+    return { linked: true as const };
+  });
+
 /** Links this website account to a Telegram store account by @username or numeric id. */
 export const linkTelegramAccount = createServerFn({ method: "POST" })
   .validator((data) => z.object({ handle: z.string().trim().min(2).max(64) }).parse(data))
+
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -202,3 +237,38 @@ export const linkTelegramAccount = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { message: "Telegram account linked." };
   });
+
+/** Full public catalog for the website shop page. */
+export const shopCatalog = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const [categoriesRes, productsRes, keysRes] = await Promise.all([
+    supabaseAdmin.from("categories").select("id,name,description,image_url").order("sort_order"),
+    supabaseAdmin
+      .from("products")
+      .select("id,name,description,price,image_url,product_type,category_id,is_featured")
+      .eq("is_active", true)
+      .order("name"),
+    supabaseAdmin.from("product_keys").select("product_id").eq("is_sold", false).limit(50000),
+  ]);
+  const counts = new Map<number, number>();
+  for (const row of keysRes.data ?? []) counts.set(row.product_id, (counts.get(row.product_id) ?? 0) + 1);
+  return {
+    categories: (categoriesRes.data ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      image_url: c.image_url,
+    })),
+    products: (productsRes.data ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      price: Number(p.price),
+      image_url: p.image_url,
+      category_id: p.category_id,
+      is_featured: p.is_featured,
+      stock: p.product_type === "file" ? 999 : (counts.get(p.id) ?? 0),
+      unlimited: p.product_type === "file",
+    })),
+  };
+});
