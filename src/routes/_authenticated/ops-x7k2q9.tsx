@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus } from "lucide-react";
+import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export const Route = createFileRoute("/_authenticated/dashboard")({
+export const Route = createFileRoute("/_authenticated/ops-x7k2q9")({
   head: () => ({
     meta: [
       { title: "Store command center" },
