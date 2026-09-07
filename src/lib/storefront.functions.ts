@@ -174,9 +174,44 @@ export const accountOverview = createServerFn({ method: "GET" })
     };
   });
 
+/** Soft link used at sign-up: connects an existing store account when one matches. */
+export const claimTelegramAccount = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        handle: z.string().trim().max(64).optional(),
+        telegramId: z.string().trim().max(32).optional(),
+      })
+      .parse(data),
+  )
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const handle = (data.handle ?? "").replace(/^@/, "").trim();
+    const numeric = (data.telegramId ?? "").replace(/\D/g, "");
+    if (!handle && !numeric) return { linked: false as const };
+
+    const base = supabaseAdmin.from("bot_users").select("id,web_user_id");
+    const { data: found } = numeric
+      ? await base.eq("telegram_id", Number(numeric)).maybeSingle()
+      : await base.ilike("username", handle).maybeSingle();
+
+    if (!found) return { linked: false as const };
+    if (found.web_user_id && found.web_user_id !== context.userId) {
+      throw new Error("That Telegram account is already connected to another login.");
+    }
+    const { error } = await supabaseAdmin
+      .from("bot_users")
+      .update({ web_user_id: context.userId })
+      .eq("id", found.id);
+    if (error) throw new Error(error.message);
+    return { linked: true as const };
+  });
+
 /** Links this website account to a Telegram store account by @username or numeric id. */
 export const linkTelegramAccount = createServerFn({ method: "POST" })
   .validator((data) => z.object({ handle: z.string().trim().min(2).max(64) }).parse(data))
+
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
