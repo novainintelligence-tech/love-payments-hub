@@ -599,23 +599,54 @@ function ProductRow({
         />
       )}
       {product.product_type === "key" && (
-        <div className="flex flex-col gap-2 md:flex-row">
+        <div className="flex flex-col gap-2">
           <Textarea
             placeholder="One unique inventory item per line"
             value={keys}
             onChange={(e) => setKeys(e.target.value)}
           />
-          <Button
-            disabled={busy || !keys.trim()}
-            onClick={() => {
-              add(keys);
-              setKeys("");
-            }}
-          >
-            Add inventory
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground hover:text-foreground">
+              <Upload className="size-4" /> Upload .txt file
+              <input
+                type="file"
+                accept=".txt,text/plain,.csv"
+                className="hidden"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  const text = await file.text();
+                  const lines = text
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter(Boolean);
+                  if (!lines.length) {
+                    toast.error("That file has no keys in it.");
+                    return;
+                  }
+                  setKeys((old) => [...old.split(/\r?\n/), ...lines].filter(Boolean).join("\n"));
+                  toast.success(`Loaded ${lines.length} keys from ${file.name}.`);
+                }}
+              />
+            </label>
+            <span className="text-xs text-muted-foreground">
+              {keys.split(/\r?\n/).filter((line) => line.trim()).length} ready to add
+            </span>
+            <Button
+              className="ml-auto"
+              disabled={busy || !keys.trim()}
+              onClick={() => {
+                add(keys);
+                setKeys("");
+              }}
+            >
+              Add inventory
+            </Button>
+          </div>
         </div>
       )}
+
     </article>
   );
 }
