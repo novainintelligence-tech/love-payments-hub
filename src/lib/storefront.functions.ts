@@ -237,3 +237,38 @@ export const linkTelegramAccount = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { message: "Telegram account linked." };
   });
+
+/** Full public catalog for the website shop page. */
+export const shopCatalog = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const [categoriesRes, productsRes, keysRes] = await Promise.all([
+    supabaseAdmin.from("categories").select("id,name,description,image_url").order("sort_order"),
+    supabaseAdmin
+      .from("products")
+      .select("id,name,description,price,image_url,product_type,category_id,is_featured")
+      .eq("is_active", true)
+      .order("name"),
+    supabaseAdmin.from("product_keys").select("product_id").eq("is_sold", false).limit(50000),
+  ]);
+  const counts = new Map<number, number>();
+  for (const row of keysRes.data ?? []) counts.set(row.product_id, (counts.get(row.product_id) ?? 0) + 1);
+  return {
+    categories: (categoriesRes.data ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      image_url: c.image_url,
+    })),
+    products: (productsRes.data ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      price: Number(p.price),
+      image_url: p.image_url,
+      category_id: p.category_id,
+      is_featured: p.is_featured,
+      stock: p.product_type === "file" ? 999 : (counts.get(p.id) ?? 0),
+      unlimited: p.product_type === "file",
+    })),
+  };
+});
