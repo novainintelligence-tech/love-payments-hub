@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Enroll Log",
+      "hasCanvas": false,
+      "bodyTextLen": 2222,
+      "bodyTextHash": "765149537dbdff0303c44654544c4a0e105924c46a2ffb048b75e9a92d57e732",
+      "bodyTextPrefix": "Join the Telegram channel for daily drops and restock alerts — @",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Enroll Log",
+      "hasCanvas": false,
+      "bodyTextLen": 2204,
+      "bodyTextHash": "8e01b41ebbf573ddf440071a2423ae0d69ee85af8c6802790c2bf956fe2b4315",
+      "bodyTextPrefix": "Join the Telegram channel for daily drops and restock alerts — @",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
