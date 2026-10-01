@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus, Upload } from "lucide-react";
+import { Check, Copy, Star, Trash2, CopyPlus, ImagePlus, Plus, Upload, Megaphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addProductKeys,
@@ -16,6 +16,7 @@ import {
   deleteProduct,
   deleteTemplate,
   duplicateProduct,
+  postProductToChannel,
   inviteTelegramUser,
   resolveDispute,
   reviewPayment,
@@ -301,7 +302,8 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
     bulk = useServerFn(bulkUpdateProducts),
     addKeys = useServerFn(addProductKeys),
     remove = useServerFn(deleteProduct),
-    duplicate = useServerFn(duplicateProduct);
+    duplicate = useServerFn(duplicateProduct),
+    advertise = useServerFn(postProductToChannel);
   const [selected, setSelected] = useState<number[]>([]),
     [bulkAction, setBulkAction] = useState("activate"),
     [bulkValue, setBulkValue] = useState("");
@@ -373,6 +375,18 @@ function Products({ data, busy, run }: { data: AdminData; busy: boolean; run: Ru
             duplicate={() =>
               run(async () => (await duplicate({ data: { id: product.id } })).message)
             }
+            advertise={() => {
+              const targets =
+                window.prompt(
+                  "Post this product card to your channel. Add extra group/channel @usernames or chat IDs (optional, comma separated). The bot must be an admin there.",
+                  "",
+                );
+              if (targets === null) return;
+              run(async () => {
+                const r = await advertise({ data: { id: product.id, targets } });
+                return `Posted to ${r.posted.join(", ") || "nothing"}${r.failed.length ? ` — failed: ${r.failed.join(", ")} (make the bot an admin there)` : ""}`;
+              });
+            }}
             add={(keys: any) =>
               run(async () => {
                 const result = await addKeys({ data: { productId: product.id, keys } });
@@ -525,6 +539,7 @@ function ProductRow({
   save,
   remove,
   duplicate,
+  advertise,
   add,
 }: any) {
   const [editing, setEditing] = useState(false),
@@ -577,6 +592,15 @@ function ProductRow({
             onClick={duplicate}
           >
             <CopyPlus className="size-4" /> Duplicate
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            title="Post product card to channel / group"
+            onClick={advertise}
+          >
+            <Megaphone className="size-4" /> Advertise
           </Button>
           <Button
             size="sm"
