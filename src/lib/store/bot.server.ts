@@ -975,13 +975,69 @@ export async function sendDailyPromo() {
       .eq("user_id", user.id)
       .maybeSingle();
     if (existing) continue;
-    const delivered = await sendMessage(Number(user.telegram_id), text);
+    const top = featured[0];
+    const delivered = top?.image_url
+      ? await sendCard(Number(user.telegram_id), top.image_url, escapeHtml(text), [
+          [{ text: "🛍 Shop now", callback_data: "shop" }],
+        ])
+      : await sendMessage(Number(user.telegram_id), text);
     await db
       .from("daily_promo_log")
       .insert({ run_date: runDate, user_id: user.id, sent: delivered !== null });
     if (delivered !== null) sent += 1;
   }
-  return { runDate, sent, subscribers: users?.length ?? 0 };
+  let channelPosts = 0;
+  for (const product of featured.slice(0, 1)) {
+    const result = await postProductAd(product.id);
+    channelPosts += result.posted.length;
+  }
+  return { runDate, sent, channelPosts, subscribers: users?.length ?? 0 };
+}
+
+/**
+ * Posts an advertising card (product picture, details, buy buttons) to the store
+ * channel and any extra group/channel chats. The bot must be an admin there.
+ */
+export async function postProductAd(productId: number, extraTargets: string[] = []) {
+  const db = await getDb();
+  const settings = await getSettings();
+  const { data: product, error } = await db
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .maybeSingle();
+  if (error || !product) throw new Error("Product not found");
+  const stock = await availableStock(product as never);
+  const { tg, siteUrl } = await import("./telegram.server");
+  const me = await tg<{ username: string }>("getMe").catch(() => null);
+  const unlimited = product.product_type === "file";
+  const caption = [
+    `${product.is_featured ? "⭐ <b>FEATURED</b>\n" : ""}🔥 <b>${escapeHtml(product.name)}</b>`,
+    "",
+    escapeHtml((product.description ?? "Instant delivery after checkout.").slice(0, 600)),
+    "",
+    `💵 Price: <b>${money(product.price)}</b>`,
+    `📦 ${unlimited ? "Unlimited stock" : stock > 0 ? `${stock} in stock` : "Restocking soon"}`,
+    "⚡ Instant automatic delivery",
+  ].join("\n");
+  const buttons: InlineKeyboard = [];
+  if (me?.username) buttons.push([{ text: "🤖 Buy in bot", url: `https://t.me/${me.username}?start=shop` }]);
+  buttons.push([{ text: "🌐 Shop on website", url: `${siteUrl()}/shop` }]);
+
+  const targets = new Set<string>();
+  if (settings.channel_username) targets.add(`@${settings.channel_username.replace(/^@/, "")}`);
+  for (const t of extraTargets) {
+    const v = t.trim();
+    if (!v) continue;
+    targets.add(/^-?\d+$/.test(v) ? v : `@${v.replace(/^@|^https?:\/\/t\.me\//g, "")}`);
+  }
+  const posted: string[] = [];
+  const failed: string[] = [];
+  for (const target of targets) {
+    const ok = await sendCard(target, product.image_url, caption, buttons);
+    (ok !== null ? posted : failed).push(target);
+  }
+  return { posted, failed };
 }
 
 export { notifyAdminPending };
