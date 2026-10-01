@@ -830,3 +830,21 @@ export const renameCategory = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { message: `${data.kind === "category" ? "Category" : "Subcategory"} updated.` };
   });
+
+/** Posts a product advertising card to the store channel and optional extra groups/channels. */
+export const postProductToChannel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { id: number | string; targets?: string }) => {
+    const id = Number(input.id);
+    if (!Number.isFinite(id) || id <= 0) throw new Error("Invalid product");
+    const targets = String(input.targets ?? "")
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .slice(0, 10);
+    return { id, targets };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { postProductAd } = await import("./store/bot.server");
+    return postProductAd(data.id, data.targets);
+  });
