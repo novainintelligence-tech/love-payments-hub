@@ -44,7 +44,7 @@ export function keyboard(rows: InlineKeyboard) {
 }
 
 export async function sendMessage(
-  chatId: number,
+  chatId: number | string,
   text: string,
   markup?: InlineKeyboard,
   extra: Record<string, unknown> = {},
@@ -100,17 +100,35 @@ function caption(text: string): string {
   return text.length > 1000 ? `${text.slice(0, 997)}…` : text;
 }
 
+/** Telegram can only fetch absolute public https URLs, so uploaded relative paths are expanded. */
+export function siteUrl(): string {
+  return (
+    process.env["PUBLIC_SITE_URL"]?.trim() ||
+    process.env["VITE_SITE_URL"]?.trim() ||
+    "https://enrollmentlog.lovable.app"
+  ).replace(/\/$/, "");
+}
+
+export function publicImage(url: string | null | undefined): string | null {
+  const value = url?.trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/")) return `${siteUrl()}${value}`;
+  return null;
+}
+
 export async function deleteMessage(chatId: number, messageId: number) {
   return tgSafe("deleteMessage", { chat_id: chatId, message_id: messageId });
 }
 
 /** Sends a banner-style card: photo + caption + buttons, or plain text when no image. */
 export async function sendCard(
-  chatId: number,
+  chatId: number | string,
   photo: string | null | undefined,
   text: string,
   markup?: InlineKeyboard,
 ) {
+  photo = publicImage(photo);
   if (!photo) return sendMessage(chatId, text, markup);
   const sent = await tgSafe("sendPhoto", {
     chat_id: chatId,
@@ -134,6 +152,7 @@ export async function editCard(
   text: string,
   markup?: InlineKeyboard,
 ) {
+  photo = publicImage(photo);
   if (!photo) {
     const edited = await tgSafe("editMessageText", {
       chat_id: chatId,
