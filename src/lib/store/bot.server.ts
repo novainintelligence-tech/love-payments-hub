@@ -43,6 +43,7 @@ import {
 } from "./shop.server";
 import {
   answerCallback,
+  deleteMessage,
   editCard,
   editMessage,
   escapeHtml,
@@ -126,8 +127,8 @@ function productButton(p: Product): InlineButton {
 
 function gridRows(buttons: InlineButton[]): InlineKeyboard {
   const rows: InlineKeyboard = [];
-  for (let index = 0; index < buttons.length; index += 2) {
-    rows.push(buttons.slice(index, index + 2));
+  for (let index = 0; index < buttons.length; index += 1) {
+    rows.push(buttons.slice(index, index + 1));
   }
   return rows;
 }
