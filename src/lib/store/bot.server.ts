@@ -428,6 +428,22 @@ async function handleText(
     );
     return;
   }
+  const COMMAND_ROUTES: Record<string, string> = {
+    "/shop": "shop",
+    "/featured": "featured",
+    "/cart": "cart",
+    "/orders": "orders",
+    "/topup": "top",
+    "/support": "support",
+  };
+  const routed = COMMAND_ROUTES[trimmed.split(/[\s@]/)[0] ?? ""];
+  if (routed) {
+    const placeholder = (await sendMessage(chatId, "⏳ Loading…")) as { message_id?: number } | null;
+    if (placeholder?.message_id) {
+      await handleCallback(chatId, placeholder.message_id, "", routed, from, user, settings);
+    }
+    return;
+  }
   if (trimmed === "/menu") {
     await sendCard(
       chatId,
