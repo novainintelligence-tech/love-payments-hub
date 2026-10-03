@@ -1,6 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { webhookSecret } from "@/routes/api/public/telegram/webhook";
 
+const BOT_COMMANDS = [
+  { command: "start", description: "Welcome & main menu" },
+  { command: "menu", description: "Main menu" },
+  { command: "shop", description: "Browse categories" },
+  { command: "featured", description: "Featured products" },
+  { command: "cart", description: "My cart" },
+  { command: "orders", description: "My orders & keys" },
+  { command: "balance", description: "Wallet balance" },
+  { command: "topup", description: "Top up with crypto" },
+  { command: "support", description: "Contact support" },
+];
+
 function authorized(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   const bearer = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
@@ -35,6 +47,8 @@ export const Route = createFileRoute("/api/public/hooks/configure-telegram")({
             allowed_updates: ["message", "callback_query"],
             drop_pending_updates: false,
           });
+          await tg("setMyCommands", { commands: BOT_COMMANDS });
+          await tg("setChatMenuButton", { menu_button: { type: "commands" } });
           const info = await tg<{
             url: string;
             has_custom_certificate: boolean;

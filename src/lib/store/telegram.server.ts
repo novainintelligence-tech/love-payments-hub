@@ -78,6 +78,7 @@ export async function editMessage(
 }
 
 export async function answerCallback(id: string, text?: string, alert = false) {
+  if (!id) return null;
   return tgSafe("answerCallbackQuery", {
     callback_query_id: id,
     ...(text ? { text, show_alert: alert } : {}),
