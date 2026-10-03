@@ -121,6 +121,49 @@ export async function deleteMessage(chatId: number, messageId: number) {
   return tgSafe("deleteMessage", { chat_id: chatId, message_id: messageId });
 }
 
+/** Downloads the picture on our side so Telegram receives the bytes, not a link it may reject. */
+async function fetchPhoto(url: string): Promise<Blob | null> {
+  try {
+    const mediaPath = url.match(/\/api\/public\/media\/(.+)$/)?.[1];
+    if (mediaPath) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data } = await supabaseAdmin.storage.from("media").download(decodeURIComponent(mediaPath));
+      if (data && data.size > 0) return data;
+    }
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 TelegramStoreBot" } });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    if (!type.startsWith("image/")) return null;
+    const blob = await res.blob();
+    return blob.size > 0 && blob.size < 10_000_000 ? blob : null;
+  } catch (error) {
+    console.error("[telegram] fetchPhoto", url, error);
+    return null;
+  }
+}
+
+async function tgMultipart(method: string, fields: Record<string, unknown>, photo: Blob) {
+  try {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined) continue;
+      form.append(k, typeof v === "string" ? v : JSON.stringify(v));
+    }
+    const ext = (photo.type.split("/")[1] ?? "jpg").replace("jpeg", "jpg");
+    form.append("photo", photo, `banner.${ext}`);
+    const res = await fetch(`https://api.telegram.org/bot${token()}/${method}`, {
+      method: "POST",
+      body: form,
+    });
+    const body = (await res.json()) as { ok: boolean; result?: unknown; description?: string };
+    if (!res.ok || !body.ok) throw new Error(body.description ?? `HTTP ${res.status}`);
+    return body.result ?? true;
+  } catch (error) {
+    console.error("[telegram]", method, "upload", error);
+    return null;
+  }
+}
+
 /** Sends a banner-style card: photo + caption + buttons, or plain text when no image. */
 export async function sendCard(
   chatId: number | string,
@@ -130,6 +173,20 @@ export async function sendCard(
 ) {
   photo = publicImage(photo);
   if (!photo) return sendMessage(chatId, text, markup);
+  const blob = await fetchPhoto(photo);
+  if (blob) {
+    const uploaded = await tgMultipart(
+      "sendPhoto",
+      {
+        chat_id: String(chatId),
+        caption: caption(text),
+        parse_mode: "HTML",
+        ...(markup ? { reply_markup: keyboard(markup) } : {}),
+      },
+      blob,
+    );
+    if (uploaded !== null) return uploaded;
+  }
   const sent = await tgSafe("sendPhoto", {
     chat_id: chatId,
     photo,
@@ -167,12 +224,24 @@ export async function editCard(
     return sendMessage(chatId, text, markup);
   }
 
-  const edited = await tgSafe("editMessageMedia", {
-    chat_id: chatId,
-    message_id: messageId,
-    media: { type: "photo", media: photo, caption: caption(text), parse_mode: "HTML" },
-    ...(markup ? { reply_markup: keyboard(markup) } : {}),
-  });
+  const blob = await fetchPhoto(photo);
+  const edited = blob
+    ? await tgMultipart(
+        "editMessageMedia",
+        {
+          chat_id: String(chatId),
+          message_id: String(messageId),
+          media: { type: "photo", media: "attach://photo", caption: caption(text), parse_mode: "HTML" },
+          ...(markup ? { reply_markup: keyboard(markup) } : {}),
+        },
+        blob,
+      )
+    : await tgSafe("editMessageMedia", {
+        chat_id: chatId,
+        message_id: messageId,
+        media: { type: "photo", media: photo, caption: caption(text), parse_mode: "HTML" },
+        ...(markup ? { reply_markup: keyboard(markup) } : {}),
+      });
   if (edited !== null) return edited;
   await deleteMessage(chatId, messageId);
   return sendCard(chatId, photo, text, markup);
