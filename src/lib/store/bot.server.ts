@@ -43,6 +43,7 @@ import {
 } from "./shop.server";
 import {
   answerCallback,
+  deleteMessage,
   editCard,
   editMessage,
   escapeHtml,
@@ -75,14 +76,11 @@ function mainMenu(admin: boolean, settings: StoreSettings): InlineKeyboard {
   const rows: InlineKeyboard = [
     [{ text: "🚀 Open store app", web_app: { url: miniAppUrl(settings) } }],
     [{ text: "🛍 Browse products", callback_data: "shop" }],
-    [
-      { text: "🛒 Cart", callback_data: "cart" },
-      { text: "📦 My orders", callback_data: "orders" },
-    ],
-    [
-      { text: "💰 Balance", callback_data: "bal" },
-      { text: "➕ Top up", callback_data: "top" },
-    ],
+    [{ text: "⭐ Featured products", callback_data: "featured" }],
+    [{ text: "🛒 Cart", callback_data: "cart" }],
+    [{ text: "📦 My orders", callback_data: "orders" }],
+    [{ text: "💰 Balance", callback_data: "bal" }],
+    [{ text: "➕ Top up", callback_data: "top" }],
     [{ text: "🆘 Support", callback_data: "support" }],
   ];
   if (admin) rows.push([{ text: "🛠 Admin panel", callback_data: "adm" }]);
@@ -129,8 +127,8 @@ function productButton(p: Product): InlineButton {
 
 function gridRows(buttons: InlineButton[]): InlineKeyboard {
   const rows: InlineKeyboard = [];
-  for (let index = 0; index < buttons.length; index += 2) {
-    rows.push(buttons.slice(index, index + 2));
+  for (let index = 0; index < buttons.length; index += 1) {
+    rows.push(buttons.slice(index, index + 1));
   }
   return rows;
 }
@@ -185,11 +183,12 @@ async function sendGallery(
       chatId,
       p.image_url,
       [
-        `${p.is_featured ? "⭐ " : ""}<b>${escapeHtml(p.name)}</b>`,
+        `🛍 <b>PRODUCT</b>${p.is_featured ? " · ⭐ Featured" : ""}`,
+        `<b>${escapeHtml(p.name)}</b>`,
         escapeHtml((p.description ?? "").slice(0, 300)),
         "",
-        `Price: <b>${money(p.price)}</b>`,
-        `Stock: <b>${p.product_type === "file" ? "unlimited" : (stocks[p.id] ?? 0)}</b>`,
+        `💵 Price: <b>${money(p.price)}</b>`,
+        `📊 Stock: <b>${p.product_type === "file" ? "Unlimited" : (stocks[p.id] ?? 0)}</b>`,
       ].join("\n"),
       [
         [
@@ -237,56 +236,68 @@ async function showCategories(chatId: number, messageId: number, settings: Store
       [{ text: "⬅️ Menu", callback_data: "menu" }],
     ]);
   }
-  const categoryButtons = categories.map((category) => ({
-    text: `${category.image_url ? "🖼 " : "📂 "}${category.name}`,
-    callback_data: `cat:${category.id}`,
-  }));
-  const featuredRows = featured.length
-    ? [
-        [{ text: "⭐🔥 FEATURED • HOT PRODUCTS 🔥⭐", callback_data: "featured" }],
-        ...gridRows(featured.map(productButton)),
-      ]
-    : [];
-  return editCard(
+  const allProducts = await listProducts(null);
+  const stocks = await stockMap(allProducts);
+  await deleteMessage(chatId, messageId);
+  await sendCard(
     chatId,
-    messageId,
     settings.banner_image_url,
-    ["🛍 <b>Choose a category</b>", "", escapeHtml(settings.store_name)].join("\n"),
     [
-      ...featuredRows,
-      ...gridRows(categoryButtons),
-      [{ text: "🖼 Browse all products", callback_data: "gal:all:0" }],
-      [{ text: "⭐ Open featured gallery", callback_data: "featured" }],
-      [{ text: "⬅️ Menu", callback_data: "menu" }],
-    ],
+      `🛍 <b>${escapeHtml(settings.store_name)}</b>`,
+      "",
+      `<b>${categories.length} categories</b> · ${allProducts.length} products`,
+      "Each card below is a 📂 <b>CATEGORY</b>. Tap <b>View products ▸</b> to open it.",
+    ].join("\n"),
+    featured.length ? [[{ text: "⭐ Featured products", callback_data: "featured" }]] : undefined,
   );
+  for (const category of categories) {
+    const items = allProducts.filter((p) => p.category_id === category.id);
+    const unlimited = items.some((p) => p.product_type === "file");
+    const stock = items.reduce(
+      (sum, p) => sum + (p.product_type === "file" ? 0 : (stocks[p.id] ?? 0)),
+      0,
+    );
+    await sendCard(
+      chatId,
+      category.image_url,
+      [
+        "📂 <b>CATEGORY</b>",
+        `<b>━━ ${escapeHtml(category.name).toUpperCase()} ━━</b>`,
+        category.description ? `\n${escapeHtml(category.description.slice(0, 300))}` : "",
+        "",
+        `📦 Products: <b>${items.length}</b>`,
+        `📊 In stock: <b>${unlimited && stock === 0 ? "Unlimited" : stock}</b>`,
+      ]
+        .filter((line, i) => line !== "" || i > 2)
+        .join("\n"),
+      [[{ text: `View products ▸`, callback_data: `cat:${category.id}` }]],
+    );
+  }
+  return sendMessage(chatId, "👆 Pick a category above.", [
+    [{ text: "🖼 Browse all products", callback_data: "gal:all:0" }],
+    [{ text: "🏠 Menu", callback_data: "menu" }],
+  ]);
 }
 
 async function showCategory(chatId: number, messageId: number, categoryId: number) {
   const category = await getCategory(categoryId);
   if (!category) return showCategoriesFallback(chatId, messageId);
   const subs = await listSubcategories(categoryId);
-  const products = (await listProducts(categoryId)).filter((product) => !product.is_featured);
-  const rows: InlineKeyboard = [
-    ...gridRows(
-      subs.map((subcategory) => ({
-        text: `${subcategory.image_url ? "🖼 " : "📁 "}${subcategory.name}`,
-        callback_data: `sub:${subcategory.id}`,
-      })),
-    ),
-    ...gridRows(products.filter((product) => !product.subcategory_id).map(productButton)),
-  ];
-  if (products.length > 0)
-    rows.push([{ text: "🖼 Open category gallery", callback_data: `gal:cat:${categoryId}:0` }]);
+  const products = await listProducts(categoryId);
+  const rows: InlineKeyboard = subs.map((subcategory) => [
+    { text: `📁 ${subcategory.name}`, callback_data: `sub:${subcategory.id}` },
+  ]);
   rows.push([{ text: "⬅️ Categories", callback_data: "shop" }]);
   const text = [
-    `📂 <b>${escapeHtml(category.name)}</b>`,
+    "📂 <b>CATEGORY</b>",
+    `<b>${escapeHtml(category.name)}</b>`,
     category.description ? `\n${escapeHtml(category.description)}` : "",
-    rows.length === 1 ? "\nNothing here yet." : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return editCard(chatId, messageId, category.image_url, text, rows);
+    "",
+    products.length ? `🛍 ${products.length} products below` : "Nothing here yet.",
+  ].join("\n");
+  await editCard(chatId, messageId, category.image_url, text, rows);
+  const loose = products.filter((p) => !p.subcategory_id || subs.length === 0);
+  if (loose.length) await sendGallery(chatId, loose, `cat:${categoryId}`, "cat", categoryId, 0);
 }
 
 async function showSubcategory(chatId: number, messageId: number, subcategoryId: number) {
@@ -415,6 +426,22 @@ async function handleText(
       welcomeText(settings, user),
       mainMenu(admin, settings),
     );
+    return;
+  }
+  const COMMAND_ROUTES: Record<string, string> = {
+    "/shop": "shop",
+    "/featured": "featured",
+    "/cart": "cart",
+    "/orders": "orders",
+    "/topup": "top",
+    "/support": "support",
+  };
+  const routed = COMMAND_ROUTES[trimmed.split(/[\s@]/)[0] ?? ""];
+  if (routed) {
+    const placeholder = (await sendMessage(chatId, "⏳ Loading…")) as { message_id?: number } | null;
+    if (placeholder?.message_id) {
+      await handleCallback(chatId, placeholder.message_id, "", routed, from, user, settings);
+    }
     return;
   }
   if (trimmed === "/menu") {
