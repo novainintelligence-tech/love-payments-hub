@@ -839,10 +839,8 @@ var require_utils$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		if (typeof val === "object") {
 			if (val instanceof Buffer) return val;
 			if (ArrayBuffer.isView(val)) return Buffer.from(val.buffer, val.byteOffset, val.byteLength);
-			if (isDate(val)) {
-				if (defaults.parseInputDatesAsUTC) return dateToStringUTC(val);
-				else return dateToString(val);
-			}
+			if (isDate(val)) if (defaults.parseInputDatesAsUTC) return dateToStringUTC(val);
+			else return dateToString(val);
 			if (Array.isArray(val)) return arrayString(val);
 			return prepareObject(val, seen);
 		}
@@ -882,10 +880,8 @@ var require_utils$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	function normalizeQueryConfig(config, values, callback) {
 		config = typeof config === "string" ? { text: config } : config;
-		if (values) {
-			if (typeof values === "function") config.callback = values;
-			else config.values = values;
-		}
+		if (values) if (typeof values === "function") config.callback = values;
+		else config.values = values;
 		if (callback) config.callback = callback;
 		return config;
 	}
@@ -1322,6 +1318,8 @@ var require_pg_connection_string = /* @__PURE__ */ __commonJSMin(((exports, modu
 			case "verify-ca":
 				if (!config.ssl.ca) throw new Error("SECURITY WARNING: Using sslmode=verify-ca requires specifying a CA with sslrootcert. If a public CA is used, verify-ca allows connections to a server that somebody else may have registered with the CA, making you vulnerable to Man-in-the-Middle attacks. Either specify a custom CA certificate with sslrootcert parameter or use sslmode=verify-full for proper security.");
 				config.ssl.checkServerIdentity = function() {};
+				break;
+			case "verify-full": break;
 		}
 		else switch (config.sslmode) {
 			case "disable":
@@ -1333,7 +1331,9 @@ var require_pg_connection_string = /* @__PURE__ */ __commonJSMin(((exports, modu
 			case "verify-full":
 				if (config.sslmode !== "verify-full") deprecatedSslModeWarning(config.sslmode);
 				break;
-			case "no-verify": config.ssl.rejectUnauthorized = false;
+			case "no-verify":
+				config.ssl.rejectUnauthorized = false;
+				break;
 		}
 		return config;
 	}
@@ -1349,15 +1349,13 @@ var require_pg_connection_string = /* @__PURE__ */ __commonJSMin(((exports, modu
 				const sslConfig = value;
 				if (typeof sslConfig === "boolean") c[key] = sslConfig;
 				if (typeof sslConfig === "object") c[key] = toConnectionOptions(sslConfig);
-			} else if (value !== void 0 && value !== null) {
-				if (key === "port") {
-					if (value !== "") {
-						const v = parseInt(value, 10);
-						if (isNaN(v)) throw new Error(`Invalid ${key}: ${value}`);
-						c[key] = v;
-					}
-				} else c[key] = value;
-			}
+			} else if (value !== void 0 && value !== null) if (key === "port") {
+				if (value !== "") {
+					const v = parseInt(value, 10);
+					if (isNaN(v)) throw new Error(`Invalid ${key}: ${value}`);
+					c[key] = v;
+				}
+			} else c[key] = value;
 			return c;
 		}, Object.create(null));
 	}
@@ -3129,10 +3127,9 @@ var require_client$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				this._errorAllQueries(error);
 				this._ended = true;
 				if (!this._ending) {
-					if (this._connecting && !this._connectionError) {
-						if (this._connectionCallback) this._connectionCallback(error);
-						else this._handleErrorEvent(error);
-					} else if (!this._connectionError) this._handleErrorEvent(error);
+					if (this._connecting && !this._connectionError) if (this._connectionCallback) this._connectionCallback(error);
+					else this._handleErrorEvent(error);
+					else if (!this._connectionError) this._handleErrorEvent(error);
 				}
 				process.nextTick(() => {
 					this.emit("end");
@@ -3521,12 +3518,10 @@ var require_client$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 		end(cb) {
 			this._ending = true;
-			if (!this.connection._connecting || this._ended) {
-				if (cb) {
-					cb();
-					return;
-				} else return this._Promise.resolve();
-			}
+			if (!this.connection._connecting || this._ended) if (cb) {
+				cb();
+				return;
+			} else return this._Promise.resolve();
 			if (!this._queryable) this.connection.stream.destroy();
 			else if (this.pipeline && (this._getActiveQuery() || this._sentQueryQueue.length > 0 || this._queryQueue.length > 0)) this.once("drain", () => this.connection.end());
 			else if (this._getActiveQuery()) this.connection.stream.destroy();
@@ -3776,16 +3771,15 @@ var require_pg_pool = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			this.emit("acquire", client);
 			client.release = this._releaseOnce(client, idleListener);
 			client.removeListener("error", idleListener);
-			if (!pendingItem.timedOut) {
-				if (isNew && this.options.verify) this.options.verify(client, (err) => {
-					if (err) {
-						client.release(err);
-						return pendingItem.callback(err, void 0, NOOP);
-					}
-					pendingItem.callback(void 0, client, client.release);
-				});
-				else pendingItem.callback(void 0, client, client.release);
-			} else if (isNew && this.options.verify) this.options.verify(client, client.release);
+			if (!pendingItem.timedOut) if (isNew && this.options.verify) this.options.verify(client, (err) => {
+				if (err) {
+					client.release(err);
+					return pendingItem.callback(err, void 0, NOOP);
+				}
+				pendingItem.callback(void 0, client, client.release);
+			});
+			else pendingItem.callback(void 0, client, client.release);
+			else if (isNew && this.options.verify) this.options.verify(client, client.release);
 			else client.release();
 		}
 		_releaseOnce(client, idleListener) {
@@ -3971,16 +3965,14 @@ var require_query = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				self.emit("_done");
 			});
 			if (err) return self.handleError(err);
-			if (self._emitRowEvents) {
-				if (results.length > 1) rows.forEach((rowOfRows, i) => {
-					rowOfRows.forEach((row) => {
-						self.emit("row", row, results[i]);
-					});
+			if (self._emitRowEvents) if (results.length > 1) rows.forEach((rowOfRows, i) => {
+				rowOfRows.forEach((row) => {
+					self.emit("row", row, results[i]);
 				});
-				else rows.forEach(function(row) {
-					self.emit("row", row, results);
-				});
-			}
+			});
+			else rows.forEach(function(row) {
+				self.emit("row", row, results);
+			});
 			self.state = "end";
 			self.emit("end", results);
 			if (self.callback) self.callback(null, results);

@@ -522,7 +522,7 @@ export async function handleAdminCallback(
       await editMessage(
         chatId,
         messageId,
-        "💵 Send: <code>telegram_id amount reason</code>\nUse a negative amount to deduct.\nExample: <code>6505578903 25 manual top-up</code>",
+        "💵 Send: <code>telegram_id amount reason</code>\nUse a negative amount to deduct.\nExample: <code>7371453715 25 manual top-up</code>",
         [[{ text: "Cancel", callback_data: "adm" }]],
       );
       return true;

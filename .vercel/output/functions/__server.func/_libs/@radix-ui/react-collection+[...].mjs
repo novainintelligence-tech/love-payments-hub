@@ -763,10 +763,8 @@ var OrderedDict = class _OrderedDict extends Map {
 		__instanciated.set(this, true);
 	}
 	set(key, value) {
-		if (__instanciated.get(this)) {
-			if (this.has(key)) this.#keys[this.#keys.indexOf(key)] = key;
-			else this.#keys.push(key);
-		}
+		if (__instanciated.get(this)) if (this.has(key)) this.#keys[this.#keys.indexOf(key)] = key;
+		else this.#keys.push(key);
 		super.set(key, value);
 		return this;
 	}
