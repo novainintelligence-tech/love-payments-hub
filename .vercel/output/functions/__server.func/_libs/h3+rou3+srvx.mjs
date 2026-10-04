@@ -245,7 +245,7 @@ var NodeResponse = /* @__PURE__ */ (() => {
 	return NodeResponse;
 })();
 //#endregion
-//#region node_modules/h3/node_modules/rou3/dist/index.mjs
+//#region node_modules/rou3/dist/index.mjs
 var NullProtoObj = /* @__PURE__ */ (() => {
 	const e = function() {};
 	return e.prototype = Object.create(null), Object.freeze(e.prototype), e;
@@ -651,4 +651,4 @@ var H3Core = class {
 	}
 };
 //#endregion
-export { toRequest as a, toEventHandler as i, HTTPError as n, NodeResponse as o, defineLazyEventHandler as r, FastURL as s, H3Core as t };
+export { toRequest as a, FastURL as c, toEventHandler as i, HTTPError as n, NullProtoObj as o, defineLazyEventHandler as r, NodeResponse as s, H3Core as t };
